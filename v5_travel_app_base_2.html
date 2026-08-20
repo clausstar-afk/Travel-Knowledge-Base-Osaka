@@ -302,9 +302,18 @@
                 </div>
             </div>
             <div class="px-6 py-4 bg-[#f5ecd9] border-t border-[#e8dcc8] flex items-center justify-end gap-3 flex-wrap">
-                <button onclick="downloadICS()" class="px-4 py-2 text-xs font-bold text-white bg-[#5c7a8a] hover:bg-[#496475] rounded-xl transition shadow-sm">
-                    📅 下載日曆 (.ics)
-                </button>
+                <!-- 📥 下載行程表：把原本分開的「下載日曆」按鈕跟 .md／.csv 匯出合併成一個按鈕＋格式選單，
+                     複製相關的按鈕（分享連結／表格文字）維持不變，只有「下載」這件事合併起來 -->
+                <div class="relative">
+                    <button onclick="toggleDownloadMenu(event)" class="px-4 py-2 text-xs font-bold text-white bg-[#5c7a8a] hover:bg-[#496475] rounded-xl transition shadow-sm">
+                        📥 下載行程表 ▾
+                    </button>
+                    <div id="download-format-menu" class="hidden absolute bottom-full mb-1 right-0 z-20 bg-[#faf6ee] border border-[#c3d3d9] rounded-xl shadow-lg overflow-hidden w-44">
+                        <button onclick="downloadMarkdown()" class="w-full text-left px-4 py-2.5 text-xs text-[#2a3e4a] hover:bg-[#eef3f5] border-b border-[#e8dcc8]">📝 Markdown（.md）</button>
+                        <button onclick="downloadCSV()" class="w-full text-left px-4 py-2.5 text-xs text-[#2a3e4a] hover:bg-[#eef3f5] border-b border-[#e8dcc8]">📊 CSV（.csv）</button>
+                        <button onclick="downloadICS()" class="w-full text-left px-4 py-2.5 text-xs text-[#2a3e4a] hover:bg-[#eef3f5]">📅 日曆（.ics）</button>
+                    </div>
+                </div>
                 <button onclick="copyShareLink()" class="px-4 py-2 text-xs font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-xl transition shadow-sm">
                     🔗 複製分享連結
                 </button>
@@ -1802,6 +1811,86 @@ ${list}
             return groups;
         }
 
+        // 產生 Markdown 表格格式純文字：同一天只在第一列標出 Day，之後幾列的天數欄留空（合併儲存格的慣用表示法），
+        // 跟畫面上的表格預覽是同一套視覺邏輯——這裡跟「複製表格文字」共用，「下載 .md」也會用到同一份文字。
+        function buildMarkdownExportText(groups) {
+            let mdText = `| 天數 | 景點名稱 | 地區 | 預估時段 | 門票 | 營業時間 |\n`;
+            mdText += `| --- | --- | --- | --- | --- | --- |\n`;
+            groups.forEach(({ dayLabel, rows }) => {
+                rows.forEach(({ item, timeLabel, warnText }, idx) => {
+                    const dayCol = idx === 0 ? dayLabel : '';
+                    const nameCol = warnText ? `${item.name}（${warnText}）` : item.name;
+                    mdText += `| ${dayCol} | ${nameCol} | ${item.area} | ${timeLabel} | ${item.ticket} | ${item.hours} |\n`;
+                });
+            });
+            return mdText;
+        }
+
+        // 產生 CSV 純文字：跟 Markdown 版不同，這裡「天數」欄每一列都重複填寫（不留空），
+        // 因為 CSV 匯入 Excel／Google試算表後常常會排序或篩選，留空的合併儲存格式在試算表軟體裡反而很難用，
+        // 每列都填完整資料才是試算表的標準用法。
+        function csvEscapeField(text) {
+            const str = String(text ?? '');
+            return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+        }
+        function buildCSVExportText(groups) {
+            const header = ['天數', '景點名稱', '地區', '預估時段', '門票', '營業時間'];
+            const lines = [header.map(csvEscapeField).join(',')];
+            groups.forEach(({ dayLabel, rows }) => {
+                rows.forEach(({ item, timeLabel, warnText }) => {
+                    const nameCol = warnText ? `${item.name}（${warnText}）` : item.name;
+                    lines.push([dayLabel, nameCol, item.area, timeLabel, item.ticket, item.hours].map(csvEscapeField).join(','));
+                });
+            });
+            return lines.join('\r\n');
+        }
+
+        // 通用的「產生 Blob 並觸發下載」小工具，.md／.csv／.ics 都共用同一套下載機制
+        function downloadTextFile(filename, content, mimeType) {
+            const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadMarkdown() {
+            const groups = buildExportRowGroups();
+            const totalRows = groups.reduce((sum, g) => sum + g.rows.length, 0);
+            if (totalRows === 0) { showToast('目前尚未選取任何景點行程', false); return; }
+            downloadTextFile('大阪行程.md', buildMarkdownExportText(groups), 'text/markdown');
+            showToast('已下載行程 Markdown 檔案（.md）', true);
+        }
+
+        function downloadCSV() {
+            const groups = buildExportRowGroups();
+            const totalRows = groups.reduce((sum, g) => sum + g.rows.length, 0);
+            if (totalRows === 0) { showToast('目前尚未選取任何景點行程', false); return; }
+            // ﻿：CSV 開頭加 UTF-8 BOM，Excel 開啟才不會把中文字顯示成亂碼
+            downloadTextFile('大阪行程.csv', '﻿' + buildCSVExportText(groups), 'text/csv');
+            showToast('已下載行程 CSV 檔案，可用 Excel／Google 試算表開啟', true);
+        }
+
+        // 📥 「下載行程表」按鈕的小選單：點擊切換顯示，選好格式或點外面都會收起來
+        function toggleDownloadMenu(event) {
+            event.stopPropagation();
+            const menu = document.getElementById('download-format-menu');
+            const opening = menu.classList.contains('hidden');
+            menu.classList.toggle('hidden');
+            if (opening) {
+                // 用 setTimeout 避免這次觸發選單的 click 事件馬上又被下面這個 listener 抓到、選單瞬間關掉
+                setTimeout(() => document.addEventListener('click', closeDownloadMenuOnce), 0);
+            }
+        }
+        function closeDownloadMenuOnce() {
+            document.getElementById('download-format-menu').classList.add('hidden');
+            document.removeEventListener('click', closeDownloadMenuOnce);
+        }
+
         function openExportModal() {
             const modal = document.getElementById('export-modal');
             const tableBody = document.getElementById('export-table-body');
@@ -1826,17 +1915,7 @@ ${list}
                     </tr>
                 `).join('')).join('');
 
-                // 產生 Markdown 表格格式純文字：同一天只在第一列標出 Day，之後幾列的天數欄留空（合併儲存格的慣用表示法）
-                let mdText = `| 天數 | 景點名稱 | 地區 | 預估時段 | 門票 | 營業時間 |\n`;
-                mdText += `| --- | --- | --- | --- | --- | --- |\n`;
-                groups.forEach(({ dayLabel, rows }) => {
-                    rows.forEach(({ item, timeLabel, warnText }, idx) => {
-                        const dayCol = idx === 0 ? dayLabel : '';
-                        const nameCol = warnText ? `${item.name}（${warnText}）` : item.name;
-                        mdText += `| ${dayCol} | ${nameCol} | ${item.area} | ${timeLabel} | ${item.ticket} | ${item.hours} |\n`;
-                    });
-                });
-                textarea.value = mdText;
+                textarea.value = buildMarkdownExportText(groups);
             }
             modal.classList.remove('hidden');
         }
