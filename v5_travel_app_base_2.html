@@ -451,6 +451,22 @@
         // 記得換成你自己在 RapidAPI 重新產生的 Key，不要沿用之前對話裡曝光過的那組。
         const AERODATABOX_KEY = '3479f97e9dmsh4f3942f838c7a0ap10532djsncab59544c462';
 
+        // 🚦 AeroDataBox 免費方案速率限制是「每秒 1 次請求」，比月額度本身更容易踩到（尤其現在同時有
+        // 航班查詢／自動完成／排班日期檢查三個功能都會打這組 API，動作快一點就可能兩次請求間隔不到 1 秒）。
+        // 這裡做一個全站共用的節流佇列：每次呼叫都排隊，確保跟上一次「送出的時間點」至少間隔 1.1 秒才送出下一個，
+        // 純粹是背景排隊等待，不會在畫面上額外顯示任何東西。
+        let aerodataboxQueue = Promise.resolve();
+        function fetchAeroDataBox(url) {
+            const run = aerodataboxQueue.then(async () => {
+                return fetch(url, {
+                    headers: { 'x-rapidapi-host': 'aerodatabox.p.rapidapi.com', 'x-rapidapi-key': AERODATABOX_KEY }
+                });
+            });
+            // 不管這次請求成功或失敗，都要讓佇列往下走，並且無論如何都間隔滿 1.1 秒再放行下一個
+            aerodataboxQueue = run.catch(() => {}).then(() => new Promise(r => setTimeout(r, 1100)));
+            return run;
+        }
+
         // ✈️ 大阪地區機場代碼（關西 KIX／伊丹 ITM／神戶 UKB 都算廣義大阪機場）
         const OSAKA_AIRPORT_IATA = ['KIX', 'ITM', 'UKB'];
 
@@ -541,9 +557,7 @@
             }
             try {
                 const url = `https://aerodatabox.p.rapidapi.com/flights/search/term?q=${encodeURIComponent(query)}`;
-                const res = await fetch(url, {
-                    headers: { 'x-rapidapi-host': 'aerodatabox.p.rapidapi.com', 'x-rapidapi-key': AERODATABOX_KEY }
-                });
+                const res = await fetchAeroDataBox(url);
                 if (mySeq !== flightNumberSuggestSeq) return; // 使用者已經繼續打字，這個回應太舊了，不採用
                 if (!res.ok) { document.getElementById('flight-number-suggestions').classList.add('hidden'); return; }
                 const data = await res.json();
@@ -582,9 +596,7 @@
             if (flightScheduledDatesCache[cacheKey]) return flightScheduledDatesCache[cacheKey];
             try {
                 const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNumber)}/dates`;
-                const res = await fetch(url, {
-                    headers: { 'x-rapidapi-host': 'aerodatabox.p.rapidapi.com', 'x-rapidapi-key': AERODATABOX_KEY }
-                });
+                const res = await fetchAeroDataBox(url);
                 if (!res.ok) return null; // 查不到排班日期就靜默略過，不擋原本的查詢流程
                 const dates = await res.json();
                 const dateSet = new Set(Array.isArray(dates) ? dates : []);
@@ -696,13 +708,7 @@
             try {
                 // ✅ 網址格式已依RapidAPI官方Code Snippets核對確認一致
                 const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNo)}/${flightDate}?withAircraftImage=true&withLocation=false&withFlightPlan=false&dateLocalRole=Both`;
-                const res = await fetch(url, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-rapidapi-host': 'aerodatabox.p.rapidapi.com',
-                        'x-rapidapi-key': AERODATABOX_KEY
-                    }
-                });
+                const res = await fetchAeroDataBox(url);
 
                 if (!res.ok) throw new Error(`查詢失敗（狀態碼 ${res.status}）`);
 
