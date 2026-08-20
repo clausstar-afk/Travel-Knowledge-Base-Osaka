@@ -1,0 +1,2456 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--
+        🔒 Content-Security-Policy：作為「就算某處真的沒 escape 到」的最後一道防線，白名單只放這個網頁
+        實際會用到的網域（Tailwind CDN、Google 登入、Google Sheets CSV、Gemini／AeroDataBox／
+        Open-Meteo／sunrise-sunset 這幾個 API）。
+
+        誠實講清楚這個 CSP 做得到跟做不到的事：
+        - 這個網頁大量使用 inline 的 onclick="..." 事件跟一整段 inline <script>，全站互動都靠這個運作，
+          所以 script-src 不得不保留 'unsafe-inline'，這代表 CSP 沒辦法完全擋下「注入的 inline 程式碼
+          執行」這件事本身——真正該擋這個的是前面已經做的 escapeHtml() 逃逸處理。
+        - 但即使某處真的漏 escape、被塞進東西，這個 CSP 仍然擋得住：載入允許清單以外網域的外部
+          script（例如攻擊者自己的攻擊腳本）、對允許清單以外網域發送 fetch/XHR（防止把資料偷送到
+          不明網站）、被嵌入別人的網頁當 iframe（frame-ancestors）。屬於「降低傷害」而不是「完全免疫」。
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://accounts.google.com https://apis.google.com;
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
+        font-src https://fonts.gstatic.com;
+        img-src 'self' https: data:;
+        connect-src 'self' https://docs.google.com https://*.googleusercontent.com https://generativelanguage.googleapis.com https://aerodatabox.p.rapidapi.com https://api.open-meteo.com https://api.sunrise-sunset.org https://accounts.google.com;
+        frame-src https://accounts.google.com;
+        object-src 'none';
+        base-uri 'self';
+        form-action 'self';
+    ">
+    <title>旅圖知情所｜動態景點資訊庫</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google OAuth 2.0 SDK -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Zen+Maru+Gothic:wght@500;700;900&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            /* 🎨 視覺改版：從冷色調的 slate 底色換成溫暖的牛皮紙／米白色，呼應「旅行手帳」質感 */
+            background-color: #f2e9d8;
+        }
+        /* ✍️ 標題專用字體：Zen Maru Gothic 圓體，圓潤但筆畫扎實，比純手寫字體更好辨識。
+           只用在標題／標籤這類字數少、字級大的地方，內文/時段/價錢等資料密集區塊
+           一律維持 Noto Sans TC，確保實際查資料時的閱讀速度不打折 */
+        .hand {
+            font-family: 'Zen Maru Gothic', 'Noto Sans TC', sans-serif;
+        }
+        /* 🧻 紙張紋理：極淡的雜訊感圓形漸層，讓平面色塊多一點手感，不是純粹的色塊 */
+        .paper-texture {
+            background-image:
+                radial-gradient(circle at 15% 25%, rgba(0,0,0,0.025) 0%, transparent 35%),
+                radial-gradient(circle at 85% 75%, rgba(0,0,0,0.025) 0%, transparent 35%);
+        }
+        /* 隱藏水滾動條但保持滾動功能 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+    
+</head>
+<body class="min-h-screen flex flex-col text-slate-800 pb-12">
+    <!-- 頂部導覽列 Header -->
+    <header class="sticky top-0 z-40 bg-[#faf6ee]/90 backdrop-blur-md border-b border-[#d8cba8] shadow-sm">
+        <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+            <!-- 品牌 Title -->
+            <div class="flex items-center gap-3 shrink-0">
+                <div class="w-10 h-10 rounded-2xl bg-[#78350f] text-white flex items-center justify-center text-xl shadow-md shadow-[#c9a876]">
+                    🍄
+                </div>
+                <div>
+                    <h1 class="hand text-lg font-bold text-slate-900 leading-tight">旅圖知情所</h1>
+                    <p class="text-[11px] text-slate-500">Travel Knowledge Base</p>
+                </div>
+            </div>
+
+            <!-- 右側功能區：行程數目 & Google 登入狀態 -->
+            <div class="flex items-center gap-3">
+                <!-- 導出行程按鈕 -->
+                <button onclick="openExportModal()" class="hidden sm:flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-[#234c66] bg-[#eaf1f4] hover:bg-[#d3e3e9] rounded-xl transition">
+                    <span>📋</span> 匯出行程
+                </button>
+                <!-- 行前準備清單按鈕：純本地勾選清單，不需要任何 API -->
+                <button onclick="openChecklistModal()" class="hidden sm:flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-[#557259] bg-[#eef3ea] hover:bg-[#dbe7d3] rounded-xl transition">
+                    <span>🧳</span> 行前清單
+                </button>
+
+                <!-- Google Auth UI -->
+                <div id="g_id_onload"
+                    data-client_id="559913588123-s5v7ji2013cf3u94ffqenmcqfj2uetsf.apps.googleusercontent.com"
+                    data-callback="handleCredentialResponse"
+                    data-auto_prompt="true"
+                    data-auto_select="true"
+                    data-itp_support="true">
+                </div>
+                <div id="user-profile" class="flex items-center gap-2">
+                    <div class="g_id_signin" data-type="standard" data-size="small" data-theme="outline" data-text="signin" data-shape="pill"></div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要內容區 Main Section -->
+    <main class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full flex-1">
+
+        <!-- ✈️ 航班查詢區塊 (新增：查詢後自動塞入行程第一天開頭)
+             只在「所有景點」頁籤顯示，切到「我的行程」時隱藏（由 switchTab() 控制 hidden）：
+             查到航班後時間軸本身就會顯示抵達/起飛卡片，兩邊同時放輸入表單只是佔版面、資訊重複 -->
+        <div id="flight-section" class="mb-6 p-5 bg-[#eef3f5] border border-[#dde7ea] rounded-2xl">
+            <h3 class="hand text-sm font-bold text-[#2a3e4a] flex items-center gap-2 mb-3">
+                <span>✈️</span> 輸入航班資訊，自動加到行程開頭或結尾
+            </h3>
+            <!-- 去程/回程選擇：決定插入時間軸的最前面還是最後面 -->
+            <div class="flex items-center gap-4 mb-3 text-xs font-bold text-[#37505f]">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="flight-type" value="arrival" checked onchange="updateFlightDateConstraints()">
+                    🛬 去程（抵達大阪，加到行程開頭）
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="flight-type" value="departure" onchange="updateFlightDateConstraints()">
+                    🛫 回程（離開大阪，加到行程結尾）
+                </label>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <input type="text" id="flight-number-input" placeholder="去程航班號碼，例如 CI173"
+                    class="flex-1 px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                <input type="date" id="flight-date-input"
+                    class="px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                <button onclick="lookupFlight()" id="flight-lookup-btn"
+                    class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#496475] rounded-xl transition shrink-0">
+                    查詢航班
+                </button>
+            </div>
+            <p id="flight-lookup-status" class="text-[11px] text-[#6f92a0] mt-2"></p>
+            <!-- 提醒使用者：查到去程航班日期後，天氣預報跟 AI 打包提醒才會有資料可以顯示，
+                 不然這兩個功能會一直悄悄地不出現、使用者也不知道要怎麼觸發 -->
+            <p class="text-[11px] text-[#8ba7b3] mt-1">💡 查詢去程航班、確定抵達日期後，「我的行程」頁籤會自動顯示大阪天氣預報與 AI 打包提醒</p>
+        </div>
+
+        <!-- 🧷 黏性定位：往下滑瀏覽景點時，「所有景點／我的行程」頁籤跟搜尋欄固定在頂部（緊貼在 header 下方，
+             header 是 h-16=64px 所以這裡用 top-16），不用手動滑回最上面才能切換頁籤。
+             ⚠️ 這個 sticky 容器必須直接掛在 <main> 底下、不能包在矮的區塊 div 裡——position:sticky 只能在自己
+             「父容器的高度範圍內」保持固定，父容器一旦比它矮（例如原本只包了頁籤列+分類 chips 兩三百 px 高），
+             捲過父容器底部後 sticky 就會直接跟著整個父容器一起被捲走。<main> 包住整頁景點卡片，夠高才撐得住。
+             z-30 蓋在卡片內容之上、但仍低於 header 的 z-40，捲動時底下卡片才不會透出來蓋住文字 -->
+        <div class="sticky top-16 z-30 bg-[#f5ecd9]/95 backdrop-blur-sm -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3 mb-4 border-b border-[#d8cba8]/70">
+            <!-- 頁籤切換 + 搜尋欄併成同一列：頁籤依內容自動寬度（不再用 flex-1 撐滿整列造成比例不對稱），
+                 搜尋欄用 flex-1 吃掉剩餘空間；手機窄螢幕（<640px）自動換行變回上下堆疊，不會擠壓變形 -->
+            <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                <!-- 頁籤切換：所有景點 vs 我的行程 -->
+                <div class="flex items-center bg-[#d8cba8]/80 p-1 rounded-2xl w-full sm:w-auto shrink-0">
+                    <button id="tab-all" onclick="switchTab('all')" class="flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition bg-[#faf6ee] text-slate-800 shadow-sm whitespace-nowrap">
+                        所有景點 (<span id="count-all">0</span>)
+                    </button>
+                    <button id="tab-itinerary" onclick="switchTab('itinerary')" class="flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 whitespace-nowrap">
+                        <span>我的行程</span>
+                        <span id="count-itinerary" class="px-2 py-0.5 text-[10px] font-extrabold bg-[#2c5f7c] text-white rounded-full">0</span>
+                    </button>
+                </div>
+
+                <!-- 關鍵字搜尋欄（只在「所有景點」頁籤使用，切到「我的行程」時會隱藏，避免打字/選分類卻沒有任何效果） -->
+                <div id="search-box" class="flex-1 min-w-0 w-full">
+                    <!-- 輸入框跟前後圖示自己包一層 relative 容器：icon 的 top-1/2 只會相對「輸入框本身」置中，
+                         不會被下面另外兩行提示/狀態文字拉長整個容器高度、把圖示往下擠歪 -->
+                    <div class="relative">
+                        <svg class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        <input type="text" id="search-input" oninput="handleSearch()" onkeydown="if(event.key==='Enter') handleAISearch()" placeholder="搜尋關鍵字，或描述你想要的景點後按 Enter 讓 Kinopio 找"
+                        class="w-full pl-10 pr-28 py-2.5 text-sm bg-[#faf6ee] border border-[#d8cba8] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#3d7290] focus:border-transparent transition shadow-sm">
+                        <!-- 🍄 Kinopio：這個 App 的 AI 助理角色，帶路的嚮導人設。按鈕維持圖示為主（空間有限），
+                             完整名字放在 title 提示跟下方說明文字裡 -->
+                        <button id="ai-search-btn" onclick="handleAISearch()" title="用自然語言描述，讓 Kinopio 幫你找景點（例如：適合下雨天的室內景點）" class="absolute right-2 top-1/2 -translate-y-1/2 h-8 px-3 rounded-full bg-[#e3dae8] hover:bg-[#cab8d4] active:bg-[#b096bf] text-[#564865] text-xs font-bold flex items-center gap-1 transition whitespace-nowrap">
+                            <span>🍄</span> Kinopio
+                        </button>
+                    </div>
+                    <!-- 澄清打字跟按 Enter 是兩套不同邏輯：打字＝即時關鍵字比對（涵蓋所有符合字串的景點），
+                         按 Enter／點🍄＝整段送給 Kinopio 做語意判斷後「取代」原本結果，不一定涵蓋關鍵字能找到的每一筆 -->
+                    <p class="mt-1.5 text-[11px] text-slate-400">打字即時篩選關鍵字・按 Enter 或點右側「🍄 Kinopio」改用 AI 依語意重新尋找（結果可能不同）</p>
+                    <p id="ai-search-status" class="hidden mt-1.5 text-[11px] text-[#6b5a7a] font-bold items-center gap-2"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分類 Filter Chips（不隨頁面固定，維持一般捲動——只有頁籤/搜尋列是使用者要求要常駐可見的） -->
+        <div id="category-chips" class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 mb-6">
+            <!-- 動態注入分類標籤 -->
+        </div>
+
+        <!-- 手機版專用：匯出行程按鈕 + 行前清單按鈕 -->
+        <div class="sm:hidden mb-4 grid grid-cols-2 gap-2">
+            <button onclick="openExportModal()" class="w-full py-2.5 text-xs font-bold text-[#234c66] bg-[#eaf1f4] border border-[#d3e3e9] rounded-xl flex items-center justify-center gap-1.5">
+                <span>📋</span> 匯出行程
+            </button>
+            <button onclick="openChecklistModal()" class="w-full py-2.5 text-xs font-bold text-[#557259] bg-[#eef3ea] border border-[#dbe7d3] rounded-xl flex items-center justify-center gap-1.5">
+                <span>🧳</span> 行前清單
+            </button>
+        </div>
+
+        <!-- ⚠️ 備用資料提示：CSV 抓取失敗、目前顯示的是內建示範資料時才會出現 -->
+        <div id="fallback-notice" class="hidden mb-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p class="text-xs sm:text-sm font-bold text-amber-800 flex items-center gap-2">
+                <span>⚠️</span> 無法連線到景點資料庫，目前顯示的是內建的 3 筆示範資料（非完整景點清單）
+            </p>
+            <button onclick="fetchAttractionsData()" class="shrink-0 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition">
+                🔄 重新嘗試載入
+            </button>
+        </div>
+
+        <!-- 骨架屏 Skeleton Screen (載入中) -->
+        <div id="skeleton-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div class="bg-[#faf6ee] rounded-2xl h-[26rem] animate-pulse border border-[#e8dcc8]"></div>
+            <div class="bg-[#faf6ee] rounded-2xl h-[26rem] animate-pulse border border-[#e8dcc8] hidden sm:block"></div>
+            <div class="bg-[#faf6ee] rounded-2xl h-[26rem] animate-pulse border border-[#e8dcc8] hidden lg:block"></div>
+            <div class="bg-[#faf6ee] rounded-2xl h-[26rem] animate-pulse border border-[#e8dcc8] hidden xl:block"></div>
+        </div>
+
+        <!-- 景點卡片展示網格 Card Grid：桌面版加大到最多 4 欄（原本 lg 只有 3 欄，配合卡片瘦身後單欄不用那麼寬），
+             搭配容器加寬到 max-w-[1600px]，寬螢幕下一次能看到更多景點、少滑很多頁 -->
+        <div id="attraction-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 hidden">
+            <!-- 景點卡片由 JS 動態渲染 -->
+        </div>
+
+        <!-- 無資料提示 Empty State -->
+        <div id="empty-state" class="hidden py-16 text-center space-y-3">
+            <div class="text-5xl">🧭</div>
+            <h3 class="text-base font-bold text-slate-700">沒有找到符合條件的景點</h3>
+            <p class="text-xs text-slate-400">請嘗試更換搜尋關鍵字或分類標籤</p>
+        </div>
+
+        <!-- 🎨 AI 客製化風格輸入區塊 -->
+        <!-- 配色統一用紫色系（跟 ✨ AI 搜尋按鈕、AI 寫的行程介紹輸出框同一組）：這顆按鈕本身就是在
+             觸發 AI 生成內容，跟其他 AI 功能性質相同，紫色代表「這是 AI 功能」，不分大面板還是小按鈕。
+             航班查詢區塊不是 AI 功能，維持獨立的藍靛色系，兩者刻意不同色 -->
+        <div id="ai-style-input-section" class="hidden mt-8 p-5 bg-[#f2eef4] border border-[#e3dae8] rounded-2xl">
+            <h3 class="hand text-sm font-bold text-[#2e2639] flex items-center gap-2 mb-3">
+                <span>🍄</span> 告訴 Kinopio 你想要的旅遊風格，讓行程更有你的味道
+            </h3>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <input type="text" id="ai-style-input" placeholder="例如：親子、美食控、拍照打卡、慢步調..."
+                    class="flex-1 px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#cab8d4] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#9678a5]">
+                <button onclick="regenerateAINarrative()" id="ai-narrative-btn"
+                    class="px-5 py-2.5 text-sm font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-xl transition shrink-0">
+                    🍄 讓 Kinopio 重新幫你寫行程
+                </button>
+            </div>
+        </div>
+
+        <!-- AI 智能時間軸區塊 (新增) -->
+        <div id="timeline-container" class="mt-8 pt-10 border-t border-[#d8cba8] hidden">
+            <!-- 這裡會由 JS 自動動態渲染出精美的垂直時間軸 -->
+        </div>
+    </main>
+
+    <!-- 匯出行程 Modal (以表格化方式呈現) -->
+    <div id="export-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-[#faf6ee] w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="px-6 py-4 border-b border-[#e8dcc8] flex items-center justify-between">
+                <h3 class="hand text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span>🗓️</span> 我的行程清單總覽
+                </h3>
+                <button onclick="closeExportModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-4">
+                <p class="text-xs text-slate-500">已自動為您整理選取景點的表格資訊，您可以直接複製或匯出：</p>
+                <!-- 表格預覽 Table Format -->
+                <!-- 📱 手機版重點修正：table 原本是 w-full，在 overflow-x-auto 容器裡永遠不會比容器寬，
+                     於是瀏覽器只能把每欄硬擠窄、文字被迫換成 3-4 行，完全不會觸發橫向捲動。
+                     改成 min-w-[640px] 讓表格保有足夠寬度，配合 whitespace-nowrap，容器才會真的滑動而不是擠壓文字 -->
+                <div class="overflow-x-auto border border-[#d8cba8] rounded-xl">
+                    <table class="min-w-[640px] text-left text-xs text-slate-600">
+                        <thead class="bg-[#f5ecd9] text-slate-800 font-bold border-b border-[#d8cba8]">
+                            <tr>
+                                <th class="p-3 whitespace-nowrap">天數</th>
+                                <th class="p-3 whitespace-nowrap">景點名稱</th>
+                                <th class="p-3 whitespace-nowrap">地區</th>
+                                <th class="p-3 whitespace-nowrap">預估時段</th>
+                                <th class="p-3 whitespace-nowrap">門票</th>
+                                <th class="p-3 whitespace-nowrap">營業時間</th>
+                            </tr>
+                        </thead>
+                        <tbody id="export-table-body" class="divide-y divide-[#e8dcc8]">
+                            <!-- JS 動態寫入 -->
+                        </tbody>
+                    </table>
+                </div>
+                <!-- 複製與純文字 Markdown 區塊 -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Markdown 表格格式純文字：</label>
+                    <textarea id="export-textarea" readonly class="w-full h-32 p-3 text-xs bg-[#f5ecd9] border border-[#d8cba8] rounded-xl font-mono focus:outline-none"></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-[#f5ecd9] border-t border-[#e8dcc8] flex items-center justify-end gap-3 flex-wrap">
+                <button onclick="downloadICS()" class="px-4 py-2 text-xs font-bold text-white bg-[#5c7a8a] hover:bg-[#496475] rounded-xl transition shadow-sm">
+                    📅 下載日曆 (.ics)
+                </button>
+                <button onclick="copyShareLink()" class="px-4 py-2 text-xs font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-xl transition shadow-sm">
+                    🔗 複製分享連結
+                </button>
+                <button onclick="copyExportText()" class="px-4 py-2 text-xs font-bold text-white bg-[#2c5f7c] hover:bg-[#234c66] rounded-xl transition shadow-sm">
+                    複製表格文字
+                </button>
+                <button onclick="closeExportModal()" class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-[#d8cba8] rounded-xl transition">
+                    關閉
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🧳 行前準備清單 Modal（純本地勾選清單，不需要任何 API，狀態存在 LocalStorage） -->
+    <div id="checklist-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-[#faf6ee] w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="px-6 py-4 border-b border-[#e8dcc8] flex items-center justify-between">
+                <h3 class="hand text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span>🧳</span> 行前準備清單
+                </h3>
+                <button onclick="closeChecklistModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
+            </div>
+            <div id="checklist-body" class="p-6 overflow-y-auto space-y-2">
+                <!-- JS 動態寫入 -->
+            </div>
+            <div class="px-6 py-4 bg-[#f5ecd9] border-t border-[#e8dcc8] flex items-center justify-between">
+                <span id="checklist-progress" class="text-xs font-bold text-slate-500"></span>
+                <button onclick="closeChecklistModal()" class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-[#d8cba8] rounded-xl transition">
+                    關閉
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 動態通知 Toast 元件 -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-50 transform translate-y-20 opacity-0 pointer-events-none transition-all duration-300 ease-out flex items-center gap-3 px-5 py-4 bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-800 text-sm">
+        <span id="toast-icon" class="text-lg"></span>
+        <span id="toast-message" class="font-medium"></span>
+    </div>
+
+    <!-- 邏輯腳本 JS -->
+    <script>
+        // CSV Google Sheet 發布網址
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQSxl1EXWF8dEf5HPjdaaa9k0Kk1yRaBJqOVfT3q4msemeziLnprsfw6YygLcUUVzqPRrLwIKqCDyHd/pub?gid=1583791343&single=true&output=csv';
+        
+        // 備用資料集 (Fallback Mock Data)
+        const MOCK_DATA = [
+            {
+                id: "attraction-1",
+                name: "大阪海遊館",
+                category: "主題樂園,自然景觀",
+                rating: "4.6",
+                image: "https://images.unsplash.com/photo-1542044896530-05d85be9b11a?auto=format&fit=crop&w=800&q=80",
+                area: "大阪灣區 (港區)",
+                address: "大阪市港區海岸通1-1-10",
+                reason: "世界最大級水族館！近距離直擊巨大鯨鯊悠游，震撼感滿分。",
+                hours: "10:00 - 20:00",
+                hoursRemark: "(依季節每日變動)",
+                ticket: "約 ¥2,700",
+                ticketRemark: "🏷️ 持周遊卡享折扣",
+                transport: "大阪港站 徒步5分",
+                transportRemark: "地鐵中央線直達",
+                stay: "2.5 - 3 小時",
+                stayRemark: "建議下午前往",
+                website: "https://www.kaiyukan.com/"
+            },
+            {
+                id: "attraction-2",
+                name: "日本環球影城 (USJ)",
+                category: "主題樂園",
+                rating: "4.7",
+                image: "https://images.unsplash.com/photo-1505995433366-e12047f3f144?auto=format&fit=crop&w=800&q=80",
+                area: "此花區",
+                address: "大阪府大阪市此花區櫻島2-1-33",
+                reason: "超級任天堂世界與哈利波特魔法世界必訪！沉浸式娛樂極致體驗。",
+                hours: "08:30 - 21:30",
+                hoursRemark: "(每日開園時間不同)",
+                ticket: "約 ¥8,600 起",
+                ticketRemark: "🏷️ 建議預先購買快速通關",
+                transport: "JR 影城城鎮站 徒步1分",
+                transportRemark: "JR 櫻島線直達",
+                stay: "全天 (6-8小時)",
+                stayRemark: "建議提早1小時排隊入園",
+                website: "https://www.usj.co.jp/"
+            },
+            {
+                id: "attraction-3",
+                name: "大阪城天守閣",
+                category: "經典地標,歷史古蹟",
+                rating: "4.5",
+                image: "https://images.unsplash.com/photo-1590559899731-a382839e5549?auto=format&fit=crop&w=800&q=80",
+                area: "中央區",
+                address: "大阪市中央區大阪城1-1",
+                reason: "日本三大名城之一，登上頂樓展望台俯瞰大阪市區絕佳美景。",
+                hours: "09:00 - 17:00",
+                hoursRemark: "(最終入館 16:30)",
+                ticket: "約 ¥600",
+                ticketRemark: "🏷️ 持周遊卡免費入場",
+                transport: "谷町四丁目站 徒步10分",
+                transportRemark: "地鐵谷町線/中央線",
+                stay: "1.5 - 2 小時",
+                stayRemark: "公園四季皆宜賞花",
+                website: "https://www.osakacastle.net/"
+            }
+        ];
+
+        // 應用程式狀態 State Management
+        let attractionsData = [];
+        let myItineraryIds = new Set();
+        let currentCategory = 'ALL';
+        let currentKeyword = '';
+        let aiSearchResultIds = null; // ✨ null = 一般關鍵字搜尋模式；陣列 = AI 自然語言搜尋結果（依相關度排序的景點 id）
+        let currentTab = 'all'; // 'all' or 'itinerary'
+        let currentArrivalFlight = null;   // 🛬 去程航班，插入時間軸最前面
+        let currentDepartureFlight = null; // 🛫 回程航班，插入時間軸最後面
+        let currentArrivalQueryDate = null;   // 去程查詢時輸入的日期，用來限制回程日期不能選更早
+        let currentDepartureQueryDate = null; // 回程查詢時輸入的日期，用來限制去程日期不能選更晚
+        let currentAINarrative = null;     // ✨ AI生成的行程開場白（含每天的小語）
+        let isGeneratingNarrative = false; // ✨ 是否正在呼叫AI（用來顯示載入動畫）
+
+        // 🗓️ 手動分天 + 拖拉排序 狀態
+        let dayCount = 1;              // 使用者設定的行程總天數
+        let dayPlan = [[]];            // dayPlan[0] = Day1 的景點 id 陣列（依序），dayPlan[1] = Day2...
+        let unassignedIds = [];        // 已加入行程但尚未被拖進任何一天的景點 id
+        let draggedItemId = null;      // 目前正在被拖曳的景點 id
+        let dayStartTimes = {};        // { 1: '09:30', 2: '10:00', ... } 每天的出發時間，使用者可自行調整
+
+        // 🌤️ 大阪天氣預報（Open-Meteo，免金鑰、免費），確定去程日期後自動查詢
+        let weatherByDate = {};        // { 'YYYY-MM-DD': { code, max, min } }
+        let weatherFetchStatus = 'idle'; // idle / loading / ready / error
+
+        // 🌇 日落時間（sunrise-sunset.org，免金鑰、免費），確定去程日期後自動查詢
+        let sunsetByDate = {};         // { 'YYYY-MM-DD': 'ISO UTC 時間字串' }
+
+        // ⚠️ 重要提醒：這是純前端網頁，API Key 寫在這裡任何人按「檢查」都看得到，跟AERODATABOX_KEY一樣的風險。
+        // Google AI Studio的免費額度也有限（依模型而定，通常每分鐘/每日有請求數上限），
+        // 正式環境建議做一個小型後端來藏Key，demo階段可接受風險，但記得別把Key外流。
+        const GEMINI_API_KEY = 'AQ.Ab8RN6JzIzmzBH5r9vtJKaswbWSt2aNJcLJbYaBq2yjoR3OJrg';
+        // 模型名稱請以你自己Google AI Studio後台實際顯示的可用模型為準，這裡先用一個常見的輕量模型示範
+        const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+
+        // ⚠️ 重要提醒：這是純前端網頁，API Key 寫在這裡任何人按「檢查」都看得到。
+        // 這對正式商業產品是大忌，但對免費額度僅600次/月的學生demo可接受風險。
+        // 記得換成你自己在 RapidAPI 重新產生的 Key，不要沿用之前對話裡曝光過的那組。
+        const AERODATABOX_KEY = '3479f97e9dmsh4f3942f838c7a0ap10532djsncab59544c462';
+
+        // ✈️ 大阪地區機場代碼（關西 KIX／伊丹 ITM／神戶 UKB 都算廣義大阪機場）
+        const OSAKA_AIRPORT_IATA = ['KIX', 'ITM', 'UKB'];
+
+        // 🕐 把 API 回傳的「2026-08-24 12:00+09:00」格式，簡化成「2026-08-24 12:00」
+        function formatFlightTime(timeStr) {
+            if (!timeStr) return '時間未提供';
+            const match = timeStr.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+            if (!match) return timeStr;
+            return `${match[1]} ${match[2]}`;
+        }
+
+        // 🛡️ 防呆：回程日期不能早於去程日期、去程日期不能晚於回程日期
+        // 順便把航班號碼輸入框的提示文字換成「去程航班號碼」/「回程航班號碼」，讓使用者一眼就知道
+        // 現在填的是哪一段航班，不用再回頭看上面選了哪顆單選鈕
+        function updateFlightDateConstraints() {
+            const dateInput = document.getElementById('flight-date-input');
+            const flightType = document.querySelector('input[name="flight-type"]:checked').value;
+            document.getElementById('flight-number-input').placeholder =
+                flightType === 'departure' ? '回程航班號碼，例如 CI173' : '去程航班號碼，例如 CI173';
+            dateInput.removeAttribute('min');
+            dateInput.removeAttribute('max');
+            if (flightType === 'departure' && currentArrivalQueryDate) {
+                dateInput.min = currentArrivalQueryDate;
+            } else if (flightType === 'arrival' && currentDepartureQueryDate) {
+                dateInput.max = currentDepartureQueryDate;
+            }
+        }
+
+        // ✈️ 查詢航班資訊：依「去程/回程」選擇，分別存入 currentArrivalFlight 或 currentDepartureFlight
+        // 🌤️ 大阪天氣：查到去程航班、確定抵達日期後自動呼叫，免費、不用金鑰的 Open-Meteo API
+        // 一般天氣預報最多只能預測未來 16 天，抓不到（旅遊日期太遠）就靜默略過，不顯示錯誤訊息干擾使用者
+        const OSAKA_LAT = 34.6937, OSAKA_LON = 135.5023;
+        function weatherIcon(code) {
+            if (code === 0) return '☀️';
+            if ([1, 2].includes(code)) return '🌤️';
+            if (code === 3) return '☁️';
+            if ([45, 48].includes(code)) return '🌫️';
+            if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return '🌧️';
+            if ([71, 73, 75, 85, 86].includes(code)) return '🌨️';
+            if ([95, 96, 99].includes(code)) return '⛈️';
+            return '🌡️';
+        }
+
+        async function fetchOsakaWeather() {
+            weatherFetchStatus = 'loading';
+            try {
+                const url = `https://api.open-meteo.com/v1/forecast?latitude=${OSAKA_LAT}&longitude=${OSAKA_LON}&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo&forecast_days=16`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`天氣查詢失敗（狀態碼 ${res.status}）`);
+                const data = await res.json();
+                weatherByDate = {};
+                data.daily.time.forEach((dateStr, i) => {
+                    weatherByDate[dateStr] = {
+                        code: data.daily.weathercode[i],
+                        max: Math.round(data.daily.temperature_2m_max[i]),
+                        min: Math.round(data.daily.temperature_2m_min[i])
+                    };
+                });
+                weatherFetchStatus = 'ready';
+            } catch (err) {
+                console.warn('無法取得大阪天氣預報（可能是旅遊日期超出 16 天預報範圍，或網路問題）：', err);
+                weatherFetchStatus = 'error';
+            }
+            if (currentTab === 'itinerary') generateDynamicTimeline();
+        }
+
+        // 🌇 日落時間：sunrise-sunset.org 一次只能查一天，所以平行查詢目前行程天數範圍內、還沒查過的日期
+        function formatSunsetJST(isoUtc) {
+            return new Date(isoUtc).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Tokyo' });
+        }
+
+        async function fetchSunsetTimes() {
+            if (!currentArrivalQueryDate) return;
+            const dates = Array.from({ length: dayCount }, (_, i) => {
+                const date = new Date(currentArrivalQueryDate + 'T00:00:00');
+                date.setDate(date.getDate() + i);
+                return formatDateISO(date);
+            });
+            const missing = dates.filter(ds => !sunsetByDate[ds]);
+            if (missing.length === 0) return;
+            try {
+                const results = await Promise.all(missing.map(ds =>
+                    fetch(`https://api.sunrise-sunset.org/json?lat=${OSAKA_LAT}&lng=${OSAKA_LON}&date=${ds}&formatted=0`)
+                        .then(res => res.ok ? res.json() : null)
+                        .catch(() => null)
+                ));
+                results.forEach((data, i) => {
+                    if (data?.results?.sunset) sunsetByDate[missing[i]] = data.results.sunset;
+                });
+            } catch (err) {
+                console.warn('無法取得日落時間：', err);
+            }
+            if (currentTab === 'itinerary') generateDynamicTimeline();
+        }
+
+        async function lookupFlight() {
+            const flightNo = document.getElementById('flight-number-input').value.trim();
+            const flightDate = document.getElementById('flight-date-input').value;
+            const flightType = document.querySelector('input[name="flight-type"]:checked').value; // 'arrival' 或 'departure'
+            const statusEl = document.getElementById('flight-lookup-status');
+            const btn = document.getElementById('flight-lookup-btn');
+
+            if (!flightNo || !flightDate) {
+                statusEl.textContent = '請輸入航班號碼與日期';
+                statusEl.className = 'text-[11px] text-[#b04938] mt-2';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = '查詢中...';
+            statusEl.textContent = '';
+
+            try {
+                // ✅ 網址格式已依RapidAPI官方Code Snippets核對確認一致
+                const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNo)}/${flightDate}?withAircraftImage=false&withLocation=false&withFlightPlan=false&dateLocalRole=Both`;
+                const res = await fetch(url, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-rapidapi-host': 'aerodatabox.p.rapidapi.com',
+                        'x-rapidapi-key': AERODATABOX_KEY
+                    }
+                });
+
+                if (!res.ok) throw new Error(`查詢失敗（狀態碼 ${res.status}）`);
+
+                const data = await res.json();
+                const flight = Array.isArray(data) ? data[0] : data;
+                if (!flight) throw new Error('查無此航班資料');
+
+                const model = flight.aircraft?.model || '機型未提供';
+
+                if (flightType === 'arrival') {
+                    // 🛬 去程：使用者關心「幾點降落大阪」，取 arrival 欄位
+                    const arrival = flight.arrival || {};
+                    const time = formatFlightTime(arrival.scheduledTime?.local || arrival.predictedTime?.local);
+                    const airport = arrival.airport?.name || arrival.airport?.iata || '抵達機場未提供';
+                    const isOsakaAirport = OSAKA_AIRPORT_IATA.includes(arrival.airport?.iata);
+
+                    if (isOsakaAirport) {
+                        // ✅ 只有確認抵達的是大阪機場，才把這班機當作行程的「去程」寫入狀態，
+                        // 否則像 Day 1 出發時間、時間軸開頭卡片這些都會被完全不相干的錯誤航班資料污染
+                        currentArrivalFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport };
+                        currentArrivalQueryDate = flightDate;
+                        updateFlightDateConstraints();
+
+                        statusEl.textContent = `✅ 已查到去程 ${currentArrivalFlight.number}，抵達 ${airport}：${time}（將加到行程開頭）`;
+                        statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
+                        showToast('去程航班已加入行程開頭！', true);
+                        fetchOsakaWeather(); // 🌤️ 旅遊日期確定了，自動查大阪天氣
+                        fetchSunsetTimes();  // 🌇 順便查每天的日落時間
+                    } else {
+                        // ⚠️ 抵達地不是大阪機場：多半是選錯方向或打錯航班號/日期，明確警示不要靜默塞入錯誤資料
+                        // （不寫入 currentArrivalFlight / currentArrivalQueryDate，避免污染行程時間軸與 Day 1 出發時間）
+                        statusEl.textContent = `⚠️ 這班機抵達的是「${airport}」，看起來不是大阪的機場，請確認航班號碼、日期與方向是否選對了「去程」`;
+                        statusEl.className = 'text-[11px] text-amber-600 mt-2 font-medium';
+                        showToast('抵達地不是大阪機場，請確認航班資訊是否正確', false);
+                    }
+                } else {
+                    // 🛫 回程：使用者關心「幾點要從大阪起飛」，取 departure 欄位
+                    const departure = flight.departure || {};
+                    const time = formatFlightTime(departure.scheduledTime?.local || departure.predictedTime?.local);
+                    const airport = departure.airport?.name || departure.airport?.iata || '出發機場未提供';
+                    const isOsakaAirport = OSAKA_AIRPORT_IATA.includes(departure.airport?.iata);
+
+                    if (isOsakaAirport) {
+                        // ✅ 只有確認出發地是大阪機場，才把這班機當作行程的「回程」寫入狀態，避免污染行程結尾資訊
+                        currentDepartureFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport };
+                        currentDepartureQueryDate = flightDate;
+                        updateFlightDateConstraints();
+
+                        statusEl.textContent = `✅ 已查到回程 ${currentDepartureFlight.number}，${airport} 起飛：${time}（將加到行程結尾）`;
+                        statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
+                        showToast('回程航班已加入行程結尾！', true);
+                    } else {
+                        // ⚠️ 出發地不是大阪機場：多半是選錯方向或打錯航班號/日期，明確警示不要靜默塞入錯誤資料
+                        // （不寫入 currentDepartureFlight / currentDepartureQueryDate，避免污染行程時間軸）
+                        statusEl.textContent = `⚠️ 這班機是從「${airport}」起飛，看起來不是大阪的機場，請確認航班號碼、日期與方向是否選對了「回程」`;
+                        statusEl.className = 'text-[11px] text-amber-600 mt-2 font-medium';
+                        showToast('出發地不是大阪機場，請確認航班資訊是否正確', false);
+                    }
+                }
+
+                // 若目前正在「我的行程」頁籤，立刻重新渲染時間軸讓航班卡片出現
+                if (currentTab === 'itinerary') {
+                    generateDynamicTimeline();
+                }
+            } catch (err) {
+                console.error('航班查詢錯誤：', err);
+                statusEl.textContent = `❌ 查詢失敗：${err.message}（請確認航班號碼、日期，或該日是否真的有這班機）`;
+                statusEl.className = 'text-[11px] text-[#b04938] mt-2';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '查詢航班';
+            }
+        }
+
+        // 初始化 Initialization
+        document.addEventListener('DOMContentLoaded', async () => {
+            loadSavedItinerary();
+            loadDayPlan();
+            loadChecklistState();
+            await fetchAttractionsData(); // 要先等景點資料載入完成，分享連結匯入時才能對照出真正存在的景點 id
+            restoreUserSession();
+            checkForSharedItinerary(); // 🔗 如果網址帶著分享連結參數，詢問是否要匯入
+        });
+
+        // 🔒 依登入帳號分開儲存行程資料：用 Google 帳號的 sub（這個帳號唯一、穩定的 ID，不會因為
+        // 改名字或換大頭貼而變動）當作儲存範圍，未登入時歸類到 'guest'。這樣不同 Google 帳號在
+        // 同一台瀏覽器登入，看到的才是各自獨立的行程，不會像以前那樣所有人共用同一份資料。
+        function getStorageScope() {
+            try {
+                const saved = localStorage.getItem('travel_kb_user');
+                if (saved) {
+                    const user = JSON.parse(saved);
+                    if (user.sub) return user.sub;
+                }
+            } catch (e) {}
+            return 'guest';
+        }
+
+        function scopedKey(baseKey) {
+            return `${baseKey}_${getStorageScope()}`;
+        }
+
+        // 讀取 LocalStorage 保留的行程
+        function loadSavedItinerary() {
+            myItineraryIds = new Set();
+            try {
+                let saved = localStorage.getItem(scopedKey('travel_kb_itinerary'));
+                // 🔁 一次性資料轉移：只在「訪客」範圍找不到自己的資料時，才去找改成分帳號儲存之前
+                // 留下的舊資料搬過來用，避免這次升級後行程憑空消失。已登入的帳號一律從乾淨狀態開始，
+                // 不會意外接收到訪客或其他帳號的舊資料。
+                if (saved === null && getStorageScope() === 'guest') {
+                    saved = localStorage.getItem('travel_kb_itinerary');
+                }
+                if (saved) {
+                    myItineraryIds = new Set(JSON.parse(saved));
+                }
+            } catch(e) {
+                console.error("LocalStorage load error:", e);
+            }
+        }
+
+        // 儲存行程至 LocalStorage（存進目前登入帳號自己的範圍）
+        function saveItinerary() {
+            try {
+                localStorage.setItem(scopedKey('travel_kb_itinerary'), JSON.stringify([...myItineraryIds]));
+            } catch(e) {
+                console.error("LocalStorage save error:", e);
+            }
+            updateCounts();
+        }
+
+        // 讀取 LocalStorage 保留的「分天 + 拖拉排序」計畫
+        function loadDayPlan() {
+            dayCount = 1; dayPlan = [[]]; unassignedIds = []; dayStartTimes = {};
+            try {
+                let saved = localStorage.getItem(scopedKey('travel_kb_dayplan'));
+                if (saved === null && getStorageScope() === 'guest') {
+                    saved = localStorage.getItem('travel_kb_dayplan'); // 同上，一次性資料轉移
+                }
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    dayCount = parsed.dayCount || 1;
+                    dayPlan = Array.isArray(parsed.dayPlan) && parsed.dayPlan.length > 0 ? parsed.dayPlan : [[]];
+                    unassignedIds = Array.isArray(parsed.unassignedIds) ? parsed.unassignedIds : [];
+                    dayStartTimes = parsed.dayStartTimes && typeof parsed.dayStartTimes === 'object' ? parsed.dayStartTimes : {};
+                }
+            } catch (e) {
+                console.error("LocalStorage load error (dayplan):", e);
+            }
+        }
+
+        // 儲存「分天 + 拖拉排序」計畫至 LocalStorage（存進目前登入帳號自己的範圍）
+        function saveDayPlan() {
+            try {
+                localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes }));
+            } catch (e) {
+                console.error("LocalStorage save error (dayplan):", e);
+            }
+        }
+
+        // 把某個景點 id 從「未分配」與所有天數裡都移除（拖拉/移除行程前的清理動作）
+        function removeFromAllDaySlots(itemId) {
+            unassignedIds = unassignedIds.filter(id => id !== itemId);
+            dayPlan.forEach(day => {
+                const idx = day.indexOf(itemId);
+                if (idx !== -1) day.splice(idx, 1);
+            });
+        }
+
+        // 🧹 防禦性清理：把 dayPlan/unassignedIds 內已經不在 myItineraryIds 的殘留 id 清掉（避免資料源改變後留下幽靈項目）
+        function pruneDayPlan() {
+            const validIds = new Set(attractionsData.map(item => item.id));
+            unassignedIds = unassignedIds.filter(id => myItineraryIds.has(id) && validIds.has(id));
+            dayPlan = dayPlan.map(day => day.filter(id => myItineraryIds.has(id) && validIds.has(id)));
+            // 已加入行程、但目前不在任何一天也不在未分配清單裡的項目（例如剛加入的新景點），補進未分配清單
+            const placed = new Set([...unassignedIds, ...dayPlan.flat()]);
+            myItineraryIds.forEach(id => {
+                if (!placed.has(id) && validIds.has(id)) unassignedIds.push(id);
+            });
+        }
+
+        // 🗓️ 依「去程/回程」查詢日期，算出航班暗示的實際行程天數（回程 − 去程 + 1）
+        function getFlightImpliedDayCount() {
+            if (!currentArrivalQueryDate || !currentDepartureQueryDate) return null;
+            const start = new Date(currentArrivalQueryDate + 'T00:00:00');
+            const end = new Date(currentDepartureQueryDate + 'T00:00:00');
+            const diffDays = Math.round((end - start) / 86400000) + 1;
+            return diffDays > 0 ? diffDays : null;
+        }
+
+        // 依去程日期 + 第幾天，算出該天實際對應的日曆日期（沒查去程時回傳 null，不影響純手動模式）
+        function getDateForDayIndex(d) {
+            if (!currentArrivalQueryDate) return null;
+            const date = new Date(currentArrivalQueryDate + 'T00:00:00');
+            date.setDate(date.getDate() + (d - 1));
+            return date;
+        }
+
+        function formatDateLabel(date) {
+            const weekday = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
+            return `${date.getMonth() + 1}/${date.getDate()}（週${weekday}）`;
+        }
+
+        function formatDateISO(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        /**
+         * 🕐 本地時間軸自動運算（不呼叫任何 API，純數學運算，拖曳/換天/改順序後可即時重算，零成本零延遲）
+         * 邏輯：從當天出發時間開始，依序疊加每個景點的「建議停留時數」與固定的交通銜接緩衝時間
+         */
+        // 🗺️ 免費「區域距離啟發式」：用資料庫裡本來就有的「所在區域」欄位，粗估兩個景點間的交通時間
+        // 數字是大阪電車路網的估計值（含轉乘/步行），不是即時路線規劃，但完全不用任何外部 API、零成本
+        function getMainAreaKey(areaStr) {
+            if (!areaStr) return '其他區域';
+            let key = areaStr;
+            if (key.includes('（')) key = key.split('（')[0];
+            else if (key.includes('(')) key = key.split('(')[0];
+            return key.trim();
+        }
+
+        const SAME_AREA_TRANSIT_MIN = 15;   // 同區域：通常用走的就到了
+        const SUBURB_TRANSIT_MIN = 50;      // 只要牽涉到「大阪近郊」，一律當作較遠的估計值
+        const DEFAULT_CROSS_AREA_MIN = 30;  // 對照表沒列到的跨區域組合，用這個當預設值
+        const AREA_TRAVEL_MIN = {           // 常見主要區域間的大約電車移動時間（含轉乘、步行到站）
+            '難波・心齋橋|梅田・中之島・本町': 18,
+            '難波・心齋橋|大阪城周邊': 22,
+            '難波・心齋橋|天王寺・新世界': 13,
+            '難波・心齋橋|天神橋・天滿': 22,
+            '難波・心齋橋|大阪灣區': 30,
+            '梅田・中之島・本町|大阪城周邊': 22,
+            '梅田・中之島・本町|天王寺・新世界': 22,
+            '梅田・中之島・本町|天神橋・天滿': 12,
+            '梅田・中之島・本町|大阪灣區': 28,
+            '大阪城周邊|天王寺・新世界': 28,
+            '大阪城周邊|天神橋・天滿': 18,
+            '大阪城周邊|大阪灣區': 38,
+            '天王寺・新世界|天神橋・天滿': 28,
+            '天王寺・新世界|大阪灣區': 38,
+            '天神橋・天滿|大阪灣區': 38
+        };
+
+        function estimateTransitMinutes(fromArea, toArea) {
+            const a = getMainAreaKey(fromArea);
+            const b = getMainAreaKey(toArea);
+            if (a === b) return SAME_AREA_TRANSIT_MIN;
+            if (a === '大阪近郊' || b === '大阪近郊') return SUBURB_TRANSIT_MIN;
+            return AREA_TRAVEL_MIN[`${a}|${b}`] ?? AREA_TRAVEL_MIN[`${b}|${a}`] ?? DEFAULT_CROSS_AREA_MIN;
+        }
+
+        // Day 1 若有查到去程航班，預設出發時間 = 抵達時間 + 90 分鐘（入境、領行李、前往市區的緩衝）；其餘天預設 09:00
+        function getDefaultDayStartTime(d) {
+            if (d === 1 && currentArrivalFlight?.time) {
+                const match = currentArrivalFlight.time.match(/(\d{2}):(\d{2})$/);
+                if (match) {
+                    let totalMin = parseInt(match[1], 10) * 60 + parseInt(match[2], 10) + 90;
+                    totalMin = ((totalMin % 1440) + 1440) % 1440;
+                    return formatMinutesToClock(totalMin);
+                }
+            }
+            return '09:00';
+        }
+
+        function getDayStartTime(d) {
+            return dayStartTimes[d] || getDefaultDayStartTime(d);
+        }
+
+        // Day 1 出發時間的下限：不能早於班機實際降落時間（人都還沒下飛機，不可能開始逛景點）
+        function getDay1EarliestStartTime() {
+            if (!currentArrivalFlight?.time) return null;
+            const match = currentArrivalFlight.time.match(/(\d{2}):(\d{2})$/);
+            return match ? `${match[1]}:${match[2]}` : null;
+        }
+
+        function clockToMinutes(clockStr) {
+            const [h, m] = clockStr.split(':').map(Number);
+            return h * 60 + m;
+        }
+
+        function setDayStartTime(d, value) {
+            dayStartTimes[d] = value;
+            saveDayPlan();
+            generateDynamicTimeline();
+        }
+
+        function formatMinutesToClock(min) {
+            min = ((min % 1440) + 1440) % 1440;
+            const h = Math.floor(min / 60), m = min % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+
+        // 📅 免費的「定休日」比對：從「營業時間」欄位裡常見的「(週三公休)」「(週三、日公休)」文字抓出固定公休的星期幾，
+        // 拿去跟這天的實際日期比對。像「每個月第4個週二公休」這種複雜月週期規則刻意跳過不比對，寧可不提醒也不要誤判。
+        const WEEKDAY_CHARS = ['日', '一', '二', '三', '四', '五', '六']; // 對應 Date.getDay() 的索引
+        function getClosedWeekdays(item) {
+            const text = `${item.hours || ''} ${item.hoursRemark || ''}`;
+            if (text.includes('每個月') || /第.{1,2}個/.test(text)) return []; // 複雜規則跳過，避免誤判
+            const match = text.match(/週([日一二三四五六、\s]+)公休/);
+            if (!match) return [];
+            return [...match[1]].map(ch => WEEKDAY_CHARS.indexOf(ch)).filter(idx => idx !== -1);
+        }
+
+        // ⏰ 免費的「最終入場／最後點餐」文字擷取：跟定休日判斷同一個原則——只從「營業時間」欄位常見的
+        // 「最終入館 16:30」「L.O. 20:00」「最後點餐 19:30」這類寫法裡抓時間，抓不到就不顯示，不做多餘臆測，
+        // 純文字規則比對，不呼叫任何 API，零成本零延遲。
+        function getLastEntryInfo(item) {
+            const text = `${item.hours || ''} ${item.hoursRemark || ''}`;
+            const loMatch = text.match(/(?:L\.?O\.?|最後點餐)[^\d]{0,4}(\d{1,2}:\d{2})/i);
+            if (loMatch) return `🍽️ 最後點餐 ${loMatch[1]}`;
+            const entryMatch = text.match(/最終(?:入[館場園]|入場)[^\d]{0,4}(\d{1,2}:\d{2})/);
+            if (entryMatch) return `⏰ 最終入場 ${entryMatch[1]}`;
+            return null;
+        }
+
+        // ☔ 免費的「室內/雨天友善」判斷：只用資料庫裡本來就有的「分類」欄位比對關鍵字，
+        // 不呼叫任何 API、不用 AI 猜——這是為了避免 AI 對「這個景點到底算不算室內」這種事實判斷產生幻覺，
+        // 寧可用簡單但準確的關鍵字規則，抓不到分類就不下判斷（不會顯示戶外警示，只是沒有室內加分而已）。
+        const INDOOR_CATEGORY_KEYWORDS = ['室內', '美術館', '博物館', '水族館', '百貨', '商場', '購物商圈', '美食街區', '商店街', '影城', '溫泉'];
+        function isIndoorFriendly(item) {
+            if (!item.category) return false;
+            return INDOOR_CATEGORY_KEYWORDS.some(k => item.category.includes(k));
+        }
+
+        // 這天的天氣代碼是否屬於「有雨/需要雨天備案」的類型，沿用 weatherIcon() 判斷雨天用的同一組代碼
+        const RAIN_WEATHER_CODES = [51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99];
+        function isRainyWeatherCode(code) {
+            return RAIN_WEATHER_CODES.includes(code);
+        }
+
+        // 把「2 - 3 小時」「0.5 - 1 小時」「全天 (6-8小時)」這類文字，粗估轉換成分鐘數（取範圍平均值）
+        function parseStayMinutes(stayText) {
+            const nums = (stayText || '').match(/\d+(\.\d+)?/g)?.map(Number) || [];
+            if (nums.length === 0) return 90; // 沒有數字資訊時，預設抓 1.5 小時
+            const avgHours = nums.length >= 2 ? (nums[0] + nums[1]) / 2 : nums[0];
+            return Math.round(avgHours * 60);
+        }
+
+        // 嘗試從「10:00 - 20:00 (依季節每日變動)」這類文字裡抓出開店/關店時間；抓不到（如「24小時」「依店家而定」）就回傳 null，不做防呆判斷
+        function parseHoursRange(hoursText) {
+            const match = (hoursText || '').match(/(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})/);
+            if (!match) return null;
+            const openMin = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+            const closeMin = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
+            if (closeMin <= openMin) return null; // 跨午夜的營業時間格式太多變，暫不處理，避免誤判
+            return { openMin, closeMin };
+        }
+
+        // 算出某一天裡，每個景點的預估開始/結束時間，以及是否可能超出該景點的營業時間
+        function computeDaySchedule(d, dayItems) {
+            let curMin = (() => {
+                const [h, m] = getDayStartTime(d).split(':').map(Number);
+                return h * 60 + m;
+            })();
+            return dayItems.map((item, idx) => {
+                const durationMin = parseStayMinutes(item.stay);
+                const startMin = curMin;
+                const endMin = startMin + durationMin;
+
+                // 🗺️ 用區域距離啟發式估算「到下一個景點」要花多久，取代原本寫死的固定 30 分鐘
+                const nextItem = dayItems[idx + 1];
+                const transitToNextMin = nextItem ? estimateTransitMinutes(item.area, nextItem.area) : null;
+                curMin = endMin + (transitToNextMin ?? 0);
+
+                const hoursRange = parseHoursRange(item.hours);
+                const outOfHours = hoursRange ? (startMin < hoursRange.openMin || endMin > hoursRange.closeMin) : false;
+
+                return { item, startMin, endMin, outOfHours, transitToNextMin };
+            });
+        }
+
+        // 調整行程總天數：縮減時，被砍掉那幾天的景點自動退回「未分配」，不會憑空消失
+        function setDayCount(n) {
+            n = Math.max(1, Math.min(14, parseInt(n, 10) || 1));
+            if (n < dayPlan.length) {
+                for (let i = n; i < dayPlan.length; i++) {
+                    unassignedIds.push(...dayPlan[i]);
+                }
+                dayPlan = dayPlan.slice(0, n);
+            } else {
+                while (dayPlan.length < n) dayPlan.push([]);
+            }
+            dayCount = n;
+            saveDayPlan();
+            generateDynamicTimeline();
+            // 🌇 天數變了，補查新增天數的日落時間（已查過的日期不會重複打 API；天氣一次查 16 天不受天數影響，不用重查）
+            fetchSunsetTimes();
+        }
+
+        // 拖拉排序：開始拖曳
+        function handleCardDragStart(e, itemId) {
+            draggedItemId = itemId;
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        // 拖拉排序：放到容器（某一天的空白處，或「未分配」區）的最後面
+        function handleContainerDrop(e, dayIndex) {
+            e.preventDefault();
+            if (!draggedItemId) return;
+            removeFromAllDaySlots(draggedItemId);
+            if (dayIndex === 0) unassignedIds.push(draggedItemId);
+            else dayPlan[dayIndex - 1].push(draggedItemId);
+            draggedItemId = null;
+            saveDayPlan();
+            generateDynamicTimeline();
+        }
+
+        // 拖拉排序：放到某張卡片「前面」，插入到精確位置
+        function handleCardDrop(e, dayIndex, targetItemId) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!draggedItemId || draggedItemId === targetItemId) return;
+            removeFromAllDaySlots(draggedItemId);
+            const list = dayIndex === 0 ? unassignedIds : dayPlan[dayIndex - 1];
+            const targetIdx = list.indexOf(targetItemId);
+            list.splice(targetIdx === -1 ? list.length : targetIdx, 0, draggedItemId);
+            draggedItemId = null;
+            saveDayPlan();
+            generateDynamicTimeline();
+        }
+
+        // CSV 資料讀取與防呆解析
+        async function fetchAttractionsData() {
+            document.getElementById('skeleton-grid').classList.remove('hidden');
+            document.getElementById('attraction-grid').classList.add('hidden');
+            document.getElementById('fallback-notice').classList.add('hidden');
+            let usedFallback = false;
+            try {
+                const res = await fetch(CSV_URL);
+                if (!res.ok) throw new Error("CSV Fetch failed");
+                const text = await res.text();
+                const parsedData = parseCSVData(text);
+                if (parsedData && parsedData.length > 0) {
+                    attractionsData = parsedData;
+                } else {
+                    attractionsData = MOCK_DATA;
+                    usedFallback = true;
+                }
+            } catch (err) {
+                console.warn("無法取得線上 CSV，啟用預設測試資料 (Fallback Data):", err);
+                attractionsData = MOCK_DATA;
+                usedFallback = true;
+            } finally {
+                document.getElementById('skeleton-grid').classList.add('hidden');
+                document.getElementById('attraction-grid').classList.remove('hidden');
+                // ⚠️ 明確告知使用者現在看到的是備用示範資料，而不是靜默切換（避免誤以為景點庫只剩 3 筆）
+                document.getElementById('fallback-notice').classList.toggle('hidden', !usedFallback);
+                renderCategoryChips();
+                renderCards();
+                updateCounts();
+            }
+        }
+
+        // 模糊欄位尋找器 (findCol) ＆ CSV 解析
+        function parseCSVData(csvText) {
+            const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
+            if (lines.length < 2) return null;
+            
+            // 簡易 CSV split (處理引號內的逗號)
+            const parseRow = row => {
+                const result = [];
+                let insideQuote = false;
+                let entry = '';
+                for (let char of row) {
+                    if (char === '"') insideQuote = !insideQuote;
+                    else if (char === ',' && !insideQuote) {
+                        result.push(entry.trim());
+                        entry = '';
+                    } else entry += char;
+                }
+                result.push(entry.trim());
+                return result;
+            };
+
+            const headers = parseRow(lines[0]);
+            const findCol = (keywords) => {
+                return headers.findIndex(h => keywords.some(k => h.toLowerCase().includes(k.toLowerCase())));
+            };
+
+            const colMap = {
+                name: findCol(['名稱', '景點', 'title', 'name']),
+                category: findCol(['分類', '類別', 'category', 'tag']),
+                rating: findCol(['評分', '分數', 'rating', 'star']),
+                image: findCol(['圖片', '照片', 'image', 'photo', 'img']),
+                area: findCol(['區域', '地區', 'area', 'district']),
+                address: findCol(['地址', '位置', 'address', 'location']),
+                reason: findCol(['推薦理由', '理由', 'reason', 'highlight', '簡介']),
+                hours: findCol(['營業時間', 'businesshours']),
+                hoursRemark: findCol(['營業備註', '時間備註']),
+                ticket: findCol(['門票資訊', '門票', '票價', 'ticket']),
+                ticketRemark: findCol(['門票優惠', '票價備註', '優惠']),
+                transport: findCol(['交通方式', '交通', 'transport']),
+                transportRemark: findCol(['交通備註']),
+                stay: findCol(['建議停留', '停留', 'stay', 'duration']),
+                stayRemark: findCol(['停留備註']),
+                website: findCol(['官網', '網站', 'website', 'link'])
+            };
+
+            const results = [];
+            for (let i = 1; i < lines.length; i++) {
+                const row = parseRow(lines[i]);
+                if (!row || row.length === 0 || !row[colMap.name]) continue;
+                const name = row[colMap.name];
+                const websiteVal = colMap.website !== -1 ? row[colMap.website] : '';
+                
+                // 官網降級處理：若無網址則自動生成 Google 搜尋連結
+                let finalWebsite = websiteVal;
+                let isSearchWebsite = false;
+                if (!finalWebsite || finalWebsite === '#' || finalWebsite.trim() === '') {
+                    finalWebsite = `https://www.google.com/search?q=${encodeURIComponent(name + ' 官網')}`;
+                    isSearchWebsite = true;
+                }
+
+                results.push({
+                    id: `csv-attraction-${i}`,
+                    name: name,
+                    category: colMap.category !== -1 ? (row[colMap.category] || '未分類') : '熱門景點',
+                    rating: colMap.rating !== -1 ? (row[colMap.rating] || '4.5') : '4.5',
+                    image: colMap.image !== -1 && row[colMap.image] ? row[colMap.image] : 'https://images.unsplash.com/photo-1542044896530-05d85be9b11a?auto=format&fit=crop&w=800&q=80',
+                    area: colMap.area !== -1 ? (row[colMap.area] || '景點區域') : '大阪市區',
+                    address: colMap.address !== -1 ? (row[colMap.address] || '詳細地址請參閱官網') : '',
+                    reason: colMap.reason !== -1 ? (row[colMap.reason] || '當地必訪熱門推薦景點！') : '當地必訪熱門推薦景點！',
+                    hours: colMap.hours !== -1 ? (row[colMap.hours] || '請見官網') : '請見官網',
+                    hoursRemark: colMap.hoursRemark !== -1 ? row[colMap.hoursRemark] : '(詳見官網)',
+                    ticket: colMap.ticket !== -1 ? (row[colMap.ticket] || '參閱官網') : '參閱官網',
+                    ticketRemark: colMap.ticketRemark !== -1 ? row[colMap.ticketRemark] : '🏷️ 可用周遊卡',
+                    transport: colMap.transport !== -1 ? (row[colMap.transport] || '鄰近電車站') : '鄰近電車站',
+                    transportRemark: colMap.transportRemark !== -1 ? row[colMap.transportRemark] : '大眾運輸直達',
+                    stay: colMap.stay !== -1 ? (row[colMap.stay] || '1-2 小時') : '1-2 小時',
+                    stayRemark: colMap.stayRemark !== -1 ? row[colMap.stayRemark] : '建議安排日間前往',
+                    website: finalWebsite,
+                    isSearchWebsite: isSearchWebsite
+                });
+            }
+            return results;
+        }
+
+        // 渲染分類篩選 Chips
+        function renderCategoryChips() {
+            const container = document.getElementById('category-chips');
+            const categories = new Set(['ALL']);
+            attractionsData.forEach(item => {
+                if (item.category) {
+                    item.category.split(',').forEach(c => categories.add(c.trim()));
+                }
+            });
+            container.innerHTML = Array.from(categories).map(cat => {
+                const label = cat === 'ALL' ? '🌟 全部分類' : cat;
+                const isSelected = currentCategory === cat;
+                const activeClass = isSelected
+                    ? 'bg-[#2c5f7c] text-white shadow-md shadow-[#d3e3e9] font-bold'
+                    : 'bg-[#faf6ee] text-slate-600 hover:bg-[#e8dcc8] border border-[#d8cba8] font-medium';
+                return `<button onclick="filterCategory('${cat}')" class="px-4 py-2 text-xs rounded-xl shrink-0 transition ${activeClass}">${label}</button>`;
+            }).join('');
+        }
+
+        function filterCategory(cat) {
+            currentCategory = cat;
+            renderCategoryChips();
+            renderCards();
+        }
+
+        function handleSearch() {
+            currentKeyword = document.getElementById('search-input').value.trim().toLowerCase();
+            // 使用者重新打字了，代表這次的關鍵字跟上次 AI 搜尋的描述不同了，先跳出 AI 搜尋結果、退回即時關鍵字篩選
+            aiSearchResultIds = null;
+            document.getElementById('ai-search-status').classList.add('hidden');
+            renderCards();
+        }
+
+        // ✨ AI 自然語言搜尋：只在使用者按 Enter 或點✨按鈕時才觸發，不會每打一個字就呼叫一次 API
+        async function handleAISearch() {
+            const query = document.getElementById('search-input').value.trim();
+            if (!query) {
+                showToast('請先輸入你想找的景點描述', false);
+                return;
+            }
+            const btn = document.getElementById('ai-search-btn');
+            const statusEl = document.getElementById('ai-search-status');
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span>';
+            statusEl.classList.remove('hidden');
+            statusEl.classList.add('flex');
+            statusEl.textContent = '🍄 Kinopio 正在幫你探路...';
+
+            try {
+                const list = attractionsData.map(item => `${item.id}|${item.name}|${item.category}|${item.area}|${item.reason}`).join('\n');
+                const prompt = `你是大阪旅遊景點的搜尋助手。以下是景點清單，每行格式為「id|名稱|分類|地區|簡介」：
+${list}
+
+使用者的搜尋描述：「${query}」
+
+請找出最符合這個描述的景點，只輸出一個JSON陣列（不要有其他文字、不要用markdown code fence包起來），內容是符合的景點id，依相關度由高到低排序，例如：["csv-attraction-3","csv-attraction-10"]。如果完全沒有符合的景點，輸出空陣列 []。`;
+
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                if (!res.ok) throw new Error(`AI搜尋失敗（狀態碼 ${res.status}）`);
+
+                const data = await res.json();
+                let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+                const ids = JSON.parse(text);
+                if (!Array.isArray(ids)) throw new Error('AI回傳格式不正確');
+
+                const validIds = ids.filter(id => attractionsData.some(item => item.id === id));
+                aiSearchResultIds = validIds;
+
+                if (validIds.length === 0) {
+                    statusEl.textContent = '🍄 Kinopio 找不到符合的景點，試試換個描述？';
+                } else {
+                    statusEl.innerHTML = `🍄 Kinopio 找到 ${validIds.length} 個符合的景點 <button onclick="clearAISearch()" class="underline hover:no-underline">清除，回到一般搜尋</button>`;
+                }
+            } catch (err) {
+                console.error('AI搜尋錯誤：', err);
+                aiSearchResultIds = null; // 失敗就靜靜退回一般關鍵字搜尋，不讓這個功能卡死整個搜尋列
+                statusEl.textContent = `🍄 Kinopio 迷路了，先用一般搜尋幫你找（${err.message}）`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span>🍄</span> Kinopio';
+                renderCards();
+            }
+        }
+
+        function clearAISearch() {
+            aiSearchResultIds = null;
+            document.getElementById('ai-search-status').classList.add('hidden');
+            renderCards();
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            const tabAll = document.getElementById('tab-all');
+            const tabItinerary = document.getElementById('tab-itinerary');
+            if (tab === 'all') {
+                tabAll.className = "flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition bg-[#faf6ee] text-slate-800 shadow-sm";
+                tabItinerary.className = "flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5";
+            } else {
+                tabItinerary.className = "flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition bg-[#faf6ee] text-slate-800 shadow-sm flex items-center justify-center gap-1.5";
+                tabAll.className = "flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900";
+            }
+            // 🔍 搜尋框跟分類 Chips 只對「所有景點」有效，切到「我的行程」時整組隱藏，避免使用者操作了卻沒有任何反應
+            // 搜尋列現在自己獨立一行（不再跟頁籤切換共用同一行），可以直接用 hidden 整個移除，不會有版面跳動問題
+            document.getElementById('search-box').classList.toggle('hidden', tab === 'itinerary');
+            document.getElementById('category-chips').classList.toggle('hidden', tab === 'itinerary');
+            // ✈️ 航班查詢區塊只在「所有景點」頁籤顯示：查到航班後，「我的行程」頁籤的時間軸本來就會顯示抵達/起飛卡片，
+            // 兩邊同時放一份輸入表單只是佔版面、資訊重複，「我的行程」頁籤更需要把空間留給時間軸內容
+            document.getElementById('flight-section').classList.toggle('hidden', tab === 'itinerary');
+            renderCards();
+        }
+
+        // 🔒 安全性：CSV 資料（景點名稱、地址、推薦理由…）跟 AI 回傳的文字，最終都會被塞進 innerHTML 渲染。
+        // 目前資料源是自己維護的 Google Sheet，風險不高，但只要有人拿到編輯權限、或表格網址被冒用置換，
+        // 就能在任何一個文字欄位塞進 <script> / <img onerror=...> 之類的內容，讓所有訪客的瀏覽器中招（XSS）。
+        // 這裡統一做逃逸處理，不管資料源之後會不會開放給別人編輯，這一整類風險直接歸零，不用每次新增
+        // 欄位、新增功能時都重新想一次「這個資料安不安全」。
+        //
+        // escapeHtml：給「純顯示文字 / HTML 屬性值」用，把 & < > " ' 轉成 HTML 實體。
+        function escapeHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // escapeJsAttr：給「塞進 onclick="func('...')" 這種 HTML 屬性裡的 JS 字串參數」用。
+        // 順序很重要：先跳脫成合法的 JS 字串內容（反斜線、單引號），再整段做 HTML escape，
+        // 瀏覽器解析屬性值時才會先還原出正確的 JS 原始碼、字串裡的特殊字元不會提早跳出屬性或字串。
+        function escapeJsAttr(str) {
+            const jsEscaped = String(str ?? '')
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '');
+            return escapeHtml(jsEscaped);
+        }
+
+        // 渲染 11 大元素卡片列表
+        // 依景點資料組出 Google 地圖搜尋連結
+        // 只用「名稱＋大阪」搜尋：Google 地圖的搜尋框會把送出的查詢字串整串顯示出來，
+        // 附上完整地址雖然更精準，但會讓使用者點開地圖時看到一長串地址文字。這些都是有辨識度的地標名稱，
+        // 「名稱＋大阪」已經足夠導到正確地點，換來乾淨許多的顯示效果。
+        function getMapUrl(item) {
+            const searchQuery = `${item.name} 大阪`;
+            return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery.trim())}`;
+        }
+
+        function renderCards() {
+            const timelineContainer = document.getElementById('timeline-container');
+            const grid = document.getElementById('attraction-grid');
+            const emptyState = document.getElementById('empty-state');
+
+            // 🗓️「我的行程」頁籤只顯示拖拉分天時間軸，不再重複顯示一份詳細卡片網格
+            // （原本兩者同時顯示：同一批景點被呈現兩次，且搜尋/分類篩選只對卡片網格有效、時間軸完全不受影響，兩邊會對不上）
+            if (currentTab === 'itinerary') {
+                if (timelineContainer) {
+                    timelineContainer.classList.remove('hidden');
+                    generateDynamicTimeline();
+                }
+                grid.classList.add('hidden');
+                emptyState.classList.add('hidden');
+                return;
+            }
+            if (timelineContainer) timelineContainer.classList.add('hidden');
+            // ✨ AI 客製化風格輸入區塊只屬於「我的行程」頁籤的時間軸，「所有景點」頁籤一律隱藏
+            // （這個 class 只在 generateDynamicTimeline 裡被移除，切回「所有景點」頁籤時要在這裡主動補上 hidden）
+            document.getElementById('ai-style-input-section').classList.add('hidden');
+
+            // 篩選過濾邏輯（只在「所有景點」頁籤使用）
+            let filtered = attractionsData.filter(item => {
+                // 分類過濾（AI 搜尋模式下依然有效，可以再用分類 Chips 進一步縮小範圍）
+                const matchCat = currentCategory === 'ALL' || (item.category && item.category.includes(currentCategory));
+                // ✨ AI 自然語言搜尋模式：只看 AI 回傳的景點 id 清單，不用關鍵字比對
+                if (aiSearchResultIds !== null) {
+                    return matchCat && aiSearchResultIds.includes(item.id);
+                }
+                // 一般關鍵字過濾
+                const matchKw = !currentKeyword ||
+                    item.name.toLowerCase().includes(currentKeyword) ||
+                    item.area.toLowerCase().includes(currentKeyword) ||
+                    item.address.toLowerCase().includes(currentKeyword);
+                return matchCat && matchKw;
+            });
+            // AI 搜尋模式下維持 AI 給的相關度排序，而不是資料源原始順序
+            if (aiSearchResultIds !== null) {
+                filtered.sort((a, b) => aiSearchResultIds.indexOf(a.id) - aiSearchResultIds.indexOf(b.id));
+            }
+
+            if (filtered.length === 0) {
+                grid.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+            grid.classList.remove('hidden');
+
+            grid.innerHTML = filtered.map(item => {
+                const isSelected = myItineraryIds.has(item.id);
+                const mapUrl = getMapUrl(item);
+                const lastEntryInfo = getLastEntryInfo(item);
+
+                // 卡片容器 Active 狀態樣式：已加入行程的卡片邊框改實線＋苔綠色，還沒加入的維持牛皮紙質感的虛線邊，
+                // 「加入行程」這個動作順便在視覺上從虛線變實線，多一點「這張卡片已經確定下來了」的感覺
+                const cardBorderClass = isSelected
+                    ? 'border-solid border-[#6b8f71] ring-4 ring-[#dbe7d3] shadow-2xl'
+                    : 'border-dashed border-[#c9a876] shadow-md hover:-translate-y-1';
+                
+                // 主按鈕 Active 狀態樣式
+                const btnBgClass = isSelected
+                    ? 'bg-[#7fa382] hover:bg-[#6b8f71] active:bg-[#557259] shadow-[#dbe7d3]'
+                    : 'bg-[#2c5f7c] hover:bg-[#234c66] active:bg-[#1a3a4a] shadow-[#d3e3e9]';
+                
+                const btnIconText = isSelected ? '✓' : '＋';
+                const btnLabelText = isSelected ? '已加入行程' : '加入我的行程';
+                
+                // 官網按鈕標籤文字
+                const websiteBtnLabel = item.isSearchWebsite ? '搜尋官網 ↗' : '前往官網 ↗';
+                
+                // 分類 Tag Array
+                const tags = item.category ? item.category.split(',').map(t => t.trim()) : ['熱門景點'];
+
+                // 🔒 這張卡片會用到的所有 CSV 欄位，統一先跳脫過再拿去組 HTML（見 escapeHtml 上方的說明）
+                const safeName = escapeHtml(item.name);
+                const safeArea = escapeHtml(item.area);
+                const safeAddress = escapeHtml(item.address || '地址詳見官網');
+                const safeReason = escapeHtml(item.reason);
+                const safeHours = escapeHtml(item.hours);
+                const safeHoursRemark = escapeHtml(item.hoursRemark || '(詳見官網)');
+                const safeTicket = escapeHtml(item.ticket);
+                const safeTicketRemark = escapeHtml(item.ticketRemark || '🏷️ 可用周遊卡');
+                const safeTransport = escapeHtml(item.transport);
+                const safeTransportRemark = escapeHtml(item.transportRemark || '電車直達');
+                const safeStay = escapeHtml(item.stay);
+                const safeStayRemark = escapeHtml(item.stayRemark || '建議白天前往');
+                const safeImage = escapeHtml(item.image);
+                const safeWebsite = escapeHtml(item.website);
+                const safeRating = escapeHtml(item.rating);
+                const safeLastEntryInfo = escapeHtml(lastEntryInfo);
+                const jsAttrName = escapeJsAttr(item.name); // 給 onclick="...('${jsAttrName}')" 這種地方用
+
+                return `
+                <div id="card-${item.id}" class="w-full bg-[#faf6ee] paper-texture rounded-sm overflow-hidden border-2 transition-all duration-300 flex flex-col justify-between ${cardBorderClass}">
+                    <div>
+                        <!-- 1. 頂部圖片區：從 h-64(256px) 瘦身到 h-40(160px)，這是整張卡片最大的省高度來源 -->
+                        <div class="relative h-40 overflow-hidden bg-[#e8dcc8]">
+                            <img src="${safeImage}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover">
+                            <!-- Scrim Overlay 漸層遮罩 -->
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
+                            <!-- 左上角：分類標籤群 -->
+                            <div class="absolute top-2.5 left-2.5 flex flex-wrap gap-1 z-10 max-w-[75%]">
+                                ${tags.map(t => `<span class="px-2 py-0.5 text-[10px] font-medium text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full shadow-sm">${escapeHtml(t)}</span>`).join('')}
+                            </div>
+                            <!-- 右上角：Google 評分 (★ + 分數) -->
+                            <div class="absolute top-2.5 right-2.5 z-10">
+                                <div class="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-white bg-black/40 backdrop-blur-md rounded-full border border-white/10 shadow-sm">
+                                    <span class="text-amber-400">★</span>
+                                    <span>${safeRating}</span>
+                                </div>
+                            </div>
+                            <!-- 底部：景點名稱（單行截斷，完整名稱用 title 屬性 hover 可見） -->
+                            <div class="absolute bottom-2.5 left-3.5 right-3.5 z-10">
+                                <h2 class="hand text-base font-bold text-white tracking-wide drop-shadow-md line-clamp-1" title="${safeName}">${safeName}</h2>
+                            </div>
+                        </div>
+
+                        <!-- 卡片內容區：p-6→p-3.5、space-y-4→space-y-2.5，整體留白收緊但每個資訊欄位都還在 -->
+                        <div class="p-3.5 space-y-2.5">
+                            <!-- 2. 地區與詳細地址 (玫瑰紅 Location Pin)，地址單行截斷、hover 看完整地址 -->
+                            <div class="flex items-start gap-1.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-[#b04938] shrink-0 mt-0.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+                                </svg>
+                                <div class="text-xs min-w-0 flex-1">
+                                    <span class="font-bold text-slate-800">${safeArea}</span>
+                                    <span class="mx-1 text-slate-300">|</span>
+                                    <span class="text-slate-500 line-clamp-1" title="${safeAddress}">${safeAddress}</span>
+                                </div>
+                            </div>
+
+                            <!-- 3. 一句話推薦理由：最多顯示 2 行，超過的部分 hover 看完整內容（title），不佔額外高度 -->
+                            <div class="flex items-start gap-2 p-2.5 bg-amber-50/70 border-l-4 border-amber-500 rounded-r-lg">
+                                <span class="text-amber-500 text-sm shrink-0">💡</span>
+                                <p class="text-xs font-medium text-amber-900 leading-snug line-clamp-2" title="${safeReason}">
+                                    ${safeReason}
+                                </p>
+                            </div>
+
+                            <!-- 4. 2x2 景點事實資料：拿掉原本的格線方框跟固定最小高度，改成單純的 2 欄清單，
+                                 每個值跟備註都改用 truncate 單行＋title 屬性，資訊完全沒少，只是不再預留大量空白 -->
+                            <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                                <div class="min-w-0">
+                                    <div class="text-[10px] font-medium text-slate-400">營業時間</div>
+                                    <div class="font-bold text-slate-700 truncate" title="${safeHours}">${safeHours}</div>
+                                    <div class="text-[10px] text-slate-400 truncate" title="${safeHoursRemark}">${safeHoursRemark}</div>
+                                    ${lastEntryInfo ? `<div class="text-[10px] text-orange-600 font-bold truncate">${safeLastEntryInfo}</div>` : ''}
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="text-[10px] font-medium text-slate-400">門票資訊</div>
+                                    <div class="font-bold text-slate-700 truncate" title="${safeTicket}">${safeTicket}</div>
+                                    <div class="text-[10px] text-[#6b8f71] font-medium truncate" title="${safeTicketRemark}">${safeTicketRemark}</div>
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="text-[10px] font-medium text-slate-400">交通方式</div>
+                                    <div class="font-bold text-slate-700 truncate" title="${safeTransport}">${safeTransport}</div>
+                                    <div class="text-[10px] text-slate-400 truncate" title="${safeTransportRemark}">${safeTransportRemark}</div>
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="text-[10px] font-medium text-slate-400">建議停留</div>
+                                    <div class="font-bold text-slate-700 truncate" title="${safeStay}">${safeStay}</div>
+                                    <div class="text-[10px] text-slate-400 truncate" title="${safeStayRemark}">${safeStayRemark}</div>
+                                </div>
+                            </div>
+
+                            <!-- 5. 免責聲明與官網連結 -->
+                            <div class="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                                <span class="flex items-center gap-1">
+                                    <span>⚠️</span> 時間以官網為準
+                                </span>
+                                <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" class="font-bold text-[#2c5f7c] hover:text-[#234c66] flex items-center gap-0.5">
+                                    ${websiteBtnLabel}
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. 按鈕操作區：py-3.5/py-3 → py-2.5/py-2，維持觸控可點但不再過度厚重 -->
+                    <div class="p-3.5 pt-0 space-y-2">
+                        <!-- 主按鈕：加入行程 (獨立 span 保護文字與圖標) -->
+                        <button id="btn-toggle-${item.id}" onclick="toggleItinerary('${item.id}', '${jsAttrName}')"
+                        class="w-full py-2.5 px-4 text-xs font-bold text-white rounded-xl shadow-md transition-all duration-300 flex items-center justify-center gap-1.5 ${btnBgClass}">
+                            <span id="btn-icon-${item.id}" class="text-sm font-normal">${btnIconText}</span>
+                            <span id="btn-text-${item.id}">${btnLabelText}</span>
+                        </button>
+                        <!-- 副按鈕：開啟 Google 地圖 (使用原生純 HTML 連結，避免 JS 攔截問題) -->
+                        <a href="${mapUrl}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="w-full py-2 px-4 text-xs font-bold text-slate-600 bg-[#faf6ee] hover:bg-[#f5ecd9] border border-[#d8cba8] rounded-xl transition-all duration-200 flex items-center justify-center gap-1.5">
+                            <!-- 地圖圖標 (text-[#b04938]) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 text-[#b04938] shrink-0">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.446 1.102-.276a1.5 1.5 0 0 0 1.114-1.45V5.182a1.5 1.5 0 0 0-1.89-1.44l-3.32.83a1.5 1.5 0 0 1-1.014 0l-3.32-.83a1.5 1.5 0 0 0-1.89 1.44v13.344c0 .65.414 1.218 1.015 1.368l1.713.428m11.386-.179a1.5 1.5 0 0 0 .114-.84V5.14c0-.65-.414-1.218-1.015-1.368L15 3.375M2.103 4.892 12 3m0 18-9.897-1.892A1.5 1.5 0 0 1 1 17.658V5.18a1.5 1.5 0 0 1 1.103-1.45L12 1.875" />
+                            </svg>
+                            <span>開啟 Google 地圖</span>
+                        </a>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // 雙向 Toggle 加入/移除行程功能 (不破壞整顆按鈕 DOM)
+        function toggleItinerary(id, name) {
+            const card = document.getElementById(`card-${id}`);
+            const btn = document.getElementById(`btn-toggle-${id}`);
+            const btnIcon = document.getElementById(`btn-icon-${id}`);
+            const btnText = document.getElementById(`btn-text-${id}`);
+
+            if (myItineraryIds.has(id)) {
+                // 從行程移除
+                myItineraryIds.delete(id);
+                removeFromAllDaySlots(id);
+                saveDayPlan();
+                if (card) {
+                    card.classList.remove('border-solid', 'border-[#6b8f71]', 'ring-4', 'ring-[#dbe7d3]', 'shadow-2xl');
+                    card.classList.add('border-dashed', 'border-[#c9a876]', 'shadow-md');
+                }
+                if (btn) {
+                    btn.classList.remove('bg-[#7fa382]', 'hover:bg-[#6b8f71]', 'active:bg-[#557259]', 'shadow-[#dbe7d3]');
+                    btn.classList.add('bg-[#2c5f7c]', 'hover:bg-[#234c66]', 'active:bg-[#1a3a4a]', 'shadow-[#d3e3e9]');
+                }
+                if (btnIcon) btnIcon.textContent = '＋';
+                if (btnText) btnText.textContent = '加入我的行程';
+                showToast(`已從行程中移除「${name}」`, false);
+            } else {
+                // 加入行程（預設放進「未分配」區，由使用者自行拖拉排入某一天）
+                myItineraryIds.add(id);
+                if (!unassignedIds.includes(id) && !dayPlan.some(day => day.includes(id))) {
+                    unassignedIds.push(id);
+                }
+                saveDayPlan();
+                if (card) {
+                    card.classList.remove('border-dashed', 'border-[#c9a876]', 'shadow-md');
+                    card.classList.add('border-solid', 'border-[#6b8f71]', 'ring-4', 'ring-[#dbe7d3]', 'shadow-2xl');
+                }
+                if (btn) {
+                    btn.classList.remove('bg-[#2c5f7c]', 'hover:bg-[#234c66]', 'active:bg-[#1a3a4a]', 'shadow-[#d3e3e9]');
+                    btn.classList.add('bg-[#7fa382]', 'hover:bg-[#6b8f71]', 'active:bg-[#557259]', 'shadow-[#dbe7d3]');
+                }
+                if (btnIcon) btnIcon.textContent = '✓';
+                if (btnText) btnText.textContent = '已加入行程';
+                showToast(`已成功將「${name}」加入行程！`, true);
+            }
+            saveItinerary();
+
+            // 若在「我的行程」頁籤下取消勾選，則重新渲染卡片
+            if (currentTab === 'itinerary') {
+                renderCards();
+            }
+        }
+
+        // 更新計數器 Badge
+        function updateCounts() {
+            document.getElementById('count-all').textContent = attractionsData.length;
+            document.getElementById('count-itinerary').textContent = myItineraryIds.size;
+        }
+
+        // Toast 動態通知
+        let toastTimeout;
+        function showToast(msg, isAdd = true) {
+            const toast = document.getElementById('toast');
+            const toastIcon = document.getElementById('toast-icon');
+            const toastMsg = document.getElementById('toast-message');
+            toastIcon.textContent = isAdd ? '🎉' : '🗑️';
+            toastMsg.textContent = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+                toast.classList.remove('translate-y-0', 'opacity-100');
+            }, 2800);
+        }
+
+        // 匯出行程 Modal
+        // 匯出用：把行程依天分組，並算出每天的預估時段／營業時間與公休日警示，跟時間軸共用同一套 computeDaySchedule，
+        // 確保「網頁上看到的時間」跟「匯出帶出門的時間」永遠一致，不會有兩份對不上的資料
+        function buildExportRowGroups() {
+            pruneDayPlan();
+            const byId = {};
+            attractionsData.forEach(item => { byId[item.id] = item; });
+
+            const groups = []; // [{ dayLabel, rows: [{ item, timeLabel, warnText }] }]
+            for (let d = 1; d <= dayCount; d++) {
+                const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
+                if (dayItems.length === 0) continue;
+                const dayDate = getDateForDayIndex(d);
+                const schedule = computeDaySchedule(d, dayItems);
+                const rows = dayItems.map((item, idx) => {
+                    const entry = schedule[idx];
+                    const timeLabel = `${formatMinutesToClock(entry.startMin)} - ${formatMinutesToClock(entry.endMin)}`;
+                    const warnings = [];
+                    if (entry.outOfHours) warnings.push('⚠️ 可能超出營業時間');
+                    if (dayDate && getClosedWeekdays(item).includes(dayDate.getDay())) warnings.push('📅 這天可能公休');
+                    return { item, timeLabel, warnText: warnings.join('、') };
+                });
+                const dayLabel = dayDate ? `Day ${d}・${formatDateLabel(dayDate)}` : `Day ${d}`;
+                groups.push({ dayLabel, rows });
+            }
+            const unassignedRows = unassignedIds.map(id => byId[id]).filter(Boolean)
+                .map(item => ({ item, timeLabel: item.stay || '', warnText: '' }));
+            if (unassignedRows.length > 0) groups.push({ dayLabel: '未排入', rows: unassignedRows });
+            return groups;
+        }
+
+        function openExportModal() {
+            const modal = document.getElementById('export-modal');
+            const tableBody = document.getElementById('export-table-body');
+            const textarea = document.getElementById('export-textarea');
+
+            const groups = buildExportRowGroups();
+            const totalRows = groups.reduce((sum, g) => sum + g.rows.length, 0);
+
+            if (totalRows === 0) {
+                tableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">目前尚未選取任何景點行程</td></tr>`;
+                textarea.value = "尚未選取景點行程。";
+            } else {
+                // 渲染 HTML 表格：同一天用 rowspan 合併「天數」欄位到第一列，不會每一列都重複寫一次 Day N
+                tableBody.innerHTML = groups.map(({ dayLabel, rows }) => rows.map(({ item, timeLabel, warnText }, idx) => `
+                    <tr class="hover:bg-[#f5ecd9]">
+                        ${idx === 0 ? `<td class="p-3 font-bold text-[#2c5f7c] align-top whitespace-nowrap" rowspan="${rows.length}">${escapeHtml(dayLabel)}</td>` : ''}
+                        <td class="p-3 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(item.name)}${warnText ? `<div class="text-[10px] font-normal text-amber-600 mt-0.5 whitespace-normal">${escapeHtml(warnText)}</div>` : ''}</td>
+                        <td class="p-3 whitespace-nowrap">${escapeHtml(item.area)}</td>
+                        <td class="p-3 whitespace-nowrap">${escapeHtml(timeLabel)}</td>
+                        <td class="p-3 whitespace-nowrap">${escapeHtml(item.ticket)}</td>
+                        <td class="p-3 whitespace-nowrap">${escapeHtml(item.hours)}</td>
+                    </tr>
+                `).join('')).join('');
+
+                // 產生 Markdown 表格格式純文字：同一天只在第一列標出 Day，之後幾列的天數欄留空（合併儲存格的慣用表示法）
+                let mdText = `| 天數 | 景點名稱 | 地區 | 預估時段 | 門票 | 營業時間 |\n`;
+                mdText += `| --- | --- | --- | --- | --- | --- |\n`;
+                groups.forEach(({ dayLabel, rows }) => {
+                    rows.forEach(({ item, timeLabel, warnText }, idx) => {
+                        const dayCol = idx === 0 ? dayLabel : '';
+                        const nameCol = warnText ? `${item.name}（${warnText}）` : item.name;
+                        mdText += `| ${dayCol} | ${nameCol} | ${item.area} | ${timeLabel} | ${item.ticket} | ${item.hours} |\n`;
+                    });
+                });
+                textarea.value = mdText;
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeExportModal() {
+            document.getElementById('export-modal').classList.add('hidden');
+        }
+
+        function copyExportText() {
+            const textarea = document.getElementById('export-textarea');
+            textarea.select();
+            document.execCommand('copy');
+            showToast('已成功複製表格 Markdown 文字！', true);
+        }
+
+        // 📅 .ics 行事曆匯出：純本地運算，時間直接沿用 computeDaySchedule 算出的預估時段，
+        // 跟網頁上看到的、匯出表格裡的時間是同一套資料，不會有第三份對不上的時間
+        // JST 固定 UTC+9（無日光節約時間），用這個固定位移把日本當地時間換算成 .ics 需要的 UTC 時間
+        function jstToICSDate(dateStr, hhmm) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const [hh, mm] = hhmm.split(':').map(Number);
+            const dt = new Date(Date.UTC(y, m - 1, d, hh - 9, mm));
+            const pad = n => String(n).padStart(2, '0');
+            return `${dt.getUTCFullYear()}${pad(dt.getUTCMonth() + 1)}${pad(dt.getUTCDate())}T${pad(dt.getUTCHours())}${pad(dt.getUTCMinutes())}00Z`;
+        }
+
+        function icsEscapeText(text) {
+            return String(text || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+        }
+
+        function downloadICS() {
+            pruneDayPlan();
+            const byId = {};
+            attractionsData.forEach(item => { byId[item.id] = item; });
+
+            // 沒查過去程航班日期時，用「今天」當 Day1 的錨點日期，並提醒使用者這只是暫定日期
+            const anchorDate = currentArrivalQueryDate || formatDateISO(new Date());
+            if (!currentArrivalQueryDate) {
+                showToast('尚未查詢去程航班日期，日曆將以「今天」當作 Day1，建議查完航班後再匯出較準確', false);
+            }
+
+            const events = [];
+            for (let d = 1; d <= dayCount; d++) {
+                const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
+                if (dayItems.length === 0) continue;
+                const baseDate = new Date(anchorDate + 'T00:00:00');
+                baseDate.setDate(baseDate.getDate() + (d - 1));
+                const dateStr = formatDateISO(baseDate);
+                const schedule = computeDaySchedule(d, dayItems);
+                dayItems.forEach((item, idx) => {
+                    const entry = schedule[idx];
+                    events.push({
+                        summary: item.name,
+                        description: [item.reason, item.ticket ? `門票：${item.ticket}` : '', item.address ? `地址：${item.address}` : '']
+                            .filter(Boolean).join('\n'),
+                        location: item.area || '',
+                        dateStr,
+                        startClock: formatMinutesToClock(entry.startMin),
+                        endClock: formatMinutesToClock(entry.endMin)
+                    });
+                });
+            }
+
+            if (events.length === 0) {
+                showToast('請先把景點排入某一天，才能匯出日曆', false);
+                return;
+            }
+
+            const nowStamp = jstToICSDate(formatDateISO(new Date()), '00:00');
+            const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//旅圖知情所//Osaka Travel Itinerary//ZH', 'CALSCALE:GREGORIAN'];
+            events.forEach((e, i) => {
+                lines.push('BEGIN:VEVENT');
+                lines.push(`UID:travel-kb-${Date.now()}-${i}@local`);
+                lines.push(`DTSTAMP:${nowStamp}`);
+                lines.push(`DTSTART:${jstToICSDate(e.dateStr, e.startClock)}`);
+                lines.push(`DTEND:${jstToICSDate(e.dateStr, e.endClock)}`);
+                lines.push(`SUMMARY:${icsEscapeText(e.summary)}`);
+                if (e.location) lines.push(`LOCATION:${icsEscapeText(e.location)}`);
+                if (e.description) lines.push(`DESCRIPTION:${icsEscapeText(e.description)}`);
+                lines.push('END:VEVENT');
+            });
+            lines.push('END:VCALENDAR');
+
+            const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '大阪行程.ics';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('已下載行程日曆檔案（.ics），可直接匯入手機行事曆', true);
+        }
+
+        // 🔗 行程分享連結：免登入、免後端，把目前的分天結構整包編碼進網址的 # 片段，複製給同行的人
+        // 注意：景點 id（例如 csv-attraction-12）是依 CSV 資料列順序產生的，如果之後 CSV 內容或順序改變，
+        // 舊的分享連結可能會對不上——這是純前端方案的已知限制，比起導入完整後端已經是很輕量的取捨了
+        function copyShareLink() {
+            pruneDayPlan();
+            if (myItineraryIds.size === 0) {
+                showToast('請先加入至少一個景點，才能產生分享連結', false);
+                return;
+            }
+            const state = { v: 1, dayCount, dayPlan, unassignedIds, dayStartTimes, ids: [...myItineraryIds] };
+            const encoded = btoa(encodeURIComponent(JSON.stringify(state)));
+            const shareUrl = `${location.origin}${location.pathname}#share=${encoded}`;
+
+            const temp = document.createElement('textarea');
+            temp.value = shareUrl;
+            temp.style.position = 'fixed';
+            temp.style.opacity = '0';
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+            showToast('分享連結已複製！貼給同行的人，打開就能選擇匯入這份行程', true);
+        }
+
+        // 頁面載入時檢查網址是否帶著分享連結，有的話詢問使用者是否要匯入（會覆蓋目前的行程，所以一定要先確認）
+        function checkForSharedItinerary() {
+            const match = location.hash.match(/#share=(.+)$/);
+            if (!match) return;
+            try {
+                const state = JSON.parse(decodeURIComponent(atob(match[1])));
+                if (!state || !Array.isArray(state.ids)) throw new Error('格式不正確');
+                const validIds = state.ids.filter(id => attractionsData.some(a => a.id === id));
+                if (validIds.length === 0) {
+                    showToast('這個分享連結裡的景點都對不上目前的景點資料庫，可能景點清單已更新', false);
+                    return;
+                }
+                const confirmed = confirm(`這個連結裡有一份分享的行程（共 ${validIds.length} 個景點），要匯入嗎？\n⚠️ 這會覆蓋你目前的行程內容。`);
+                if (!confirmed) return;
+
+                myItineraryIds = new Set(validIds);
+                dayCount = Math.max(1, Math.min(14, parseInt(state.dayCount, 10) || 1));
+                dayPlan = Array.isArray(state.dayPlan) ? state.dayPlan.map(day => day.filter(id => validIds.includes(id))) : [[]];
+                while (dayPlan.length < dayCount) dayPlan.push([]);
+                dayPlan = dayPlan.slice(0, dayCount);
+                unassignedIds = Array.isArray(state.unassignedIds) ? state.unassignedIds.filter(id => validIds.includes(id)) : [];
+                // 🔒 安全性：dayStartTimes 的值會被直接嵌進時間軸的 <input value="..."> 屬性裡渲染。
+                // 分享連結完全由使用者提供、可以被任意竄改，如果不驗證格式，惡意連結可以塞入
+                // 像 `09:00"><img src=x onerror="...">` 這種字串，讓收到連結的人一匯入就中招（XSS）。
+                // 只接受嚴格符合 HH:MM（00:00-23:59）格式的值，其餘一律捨棄，不接受任何例外字元。
+                const TIME_FORMAT = /^([01]\d|2[0-3]):[0-5]\d$/;
+                dayStartTimes = {};
+                if (state.dayStartTimes && typeof state.dayStartTimes === 'object') {
+                    Object.keys(state.dayStartTimes).forEach(key => {
+                        const val = state.dayStartTimes[key];
+                        if (/^\d+$/.test(key) && typeof val === 'string' && TIME_FORMAT.test(val)) {
+                            dayStartTimes[key] = val;
+                        }
+                    });
+                }
+                pruneDayPlan();
+                saveItinerary();
+                saveDayPlan();
+                switchTab('itinerary');
+                showToast('已匯入分享的行程！', true);
+            } catch (e) {
+                console.error('分享連結解析失敗：', e);
+                showToast('分享連結格式錯誤，無法匯入', false);
+            } finally {
+                history.replaceState(null, '', location.pathname + location.search);
+            }
+        }
+
+        // 🧳 行前準備清單：純本地勾選清單，不呼叫任何 API，狀態存在 LocalStorage
+        const CHECKLIST_ITEMS = [
+            { id: 'passport', label: '護照（效期6個月以上）' },
+            { id: 'flight-hotel', label: '機票、訂房證明（電子或紙本）' },
+            { id: 'payment', label: '提款卡／信用卡（確認已開通海外交易）' },
+            { id: 'cash', label: '日幣現金（小額鈔票與零錢）' },
+            { id: 'ic-card', label: '交通 IC 卡（ICOCA/PASMO）或周遊卡' },
+            { id: 'sim', label: '網路（上網卡、WiFi 蛋，或開通漫遊）' },
+            { id: 'adapter', label: '轉接頭、充電器、行動電源' },
+            { id: 'medicine', label: '常備藥品（腸胃藥、感冒藥、個人處方藥）' },
+            { id: 'rain', label: '雨具（輕便雨傘或雨衣）' },
+            { id: 'sunscreen', label: '防曬用品' },
+            { id: 'toiletries', label: '個人衛生用品' },
+            { id: 'itinerary-copy', label: '行程截圖或離線備份（沒網路也能看）' }
+        ];
+        let checklistState = {};
+
+        function loadChecklistState() {
+            checklistState = {};
+            try {
+                let saved = localStorage.getItem(scopedKey('travel_kb_checklist'));
+                if (saved === null && getStorageScope() === 'guest') {
+                    saved = localStorage.getItem('travel_kb_checklist'); // 一次性資料轉移，理由同行程/分天
+                }
+                if (saved) checklistState = JSON.parse(saved);
+            } catch (e) {
+                console.error('LocalStorage load error (checklist):', e);
+            }
+        }
+
+        function saveChecklistState() {
+            try {
+                localStorage.setItem(scopedKey('travel_kb_checklist'), JSON.stringify(checklistState));
+            } catch (e) {
+                console.error('LocalStorage save error (checklist):', e);
+            }
+        }
+
+        function toggleChecklistItem(id) {
+            checklistState[id] = !checklistState[id];
+            saveChecklistState();
+            renderChecklist();
+        }
+
+        function renderChecklist() {
+            const body = document.getElementById('checklist-body');
+            const progress = document.getElementById('checklist-progress');
+            const checkedCount = CHECKLIST_ITEMS.filter(item => checklistState[item.id]).length;
+            body.innerHTML = CHECKLIST_ITEMS.map(item => {
+                const checked = !!checklistState[item.id];
+                return `
+                    <label class="flex items-center gap-3 p-3 rounded-xl border ${checked ? 'border-[#c2d6b8] bg-[#eef3ea]' : 'border-[#e8dcc8] bg-[#f5ecd9]/50'} cursor-pointer transition">
+                        <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleChecklistItem('${item.id}')" class="w-5 h-5 rounded accent-[#6b8f71]">
+                        <span class="text-sm ${checked ? 'text-[#3f5642] line-through' : 'text-slate-700'} font-medium">${item.label}</span>
+                    </label>
+                `;
+            }).join('');
+            progress.textContent = `已準備 ${checkedCount} / ${CHECKLIST_ITEMS.length} 項`;
+        }
+
+        function openChecklistModal() {
+            renderChecklist();
+            document.getElementById('checklist-modal').classList.remove('hidden');
+        }
+
+        function closeChecklistModal() {
+            document.getElementById('checklist-modal').classList.add('hidden');
+        }
+
+        // Google OAuth 登入回呼處理
+        function handleCredentialResponse(response) {
+            try {
+                // 解析 JWT Payload
+                const base64Url = response.credential.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                const user = JSON.parse(jsonPayload);
+
+                // 🔑 把登入者資訊存到 localStorage，重新整理頁面時才不用每次都重新登入。
+                // sub 是這個 Google 帳號唯一、穩定的 ID，用來把行程資料跟帳號綁在一起（見 getStorageScope）。
+                try {
+                    localStorage.setItem('travel_kb_user', JSON.stringify({ name: user.name, picture: user.picture, sub: user.sub }));
+                } catch (storageErr) {
+                    console.error("LocalStorage save error (user profile):", storageErr);
+                    showToast('登入成功，但瀏覽器封鎖本機儲存，重新整理後需要再登入一次', false);
+                }
+
+                renderUserProfile(user.name, user.picture);
+                reloadScopedDataAndRerender(); // 🔁 切成這個帳號自己的行程資料，不沿用剛剛訪客或其他帳號的內容
+                showToast(`歡迎回來，${user.name}！`, true);
+            } catch (e) {
+                console.error("Google Auth error:", e);
+            }
+        }
+
+        // 依登入資訊渲染右上角頭像區（含登出按鈕）
+        function renderUserProfile(name, picture) {
+            const profileDiv = document.getElementById('user-profile');
+            profileDiv.innerHTML = `
+                <div class="flex items-center gap-2 bg-[#e8dcc8] p-1 pr-1 rounded-full">
+                    <img src="${escapeHtml(picture)}" alt="${escapeHtml(name)}" class="w-7 h-7 rounded-full">
+                    <span class="text-xs font-bold text-slate-700">${escapeHtml(name)}</span>
+                    <button onclick="signOutUser()" title="登出" class="text-slate-400 hover:text-[#b04938] text-xs font-bold px-2 py-1 rounded-full hover:bg-[#faf6ee] transition">✕</button>
+                </div>
+            `;
+        }
+
+        // 頁面載入時，若先前已登入過，直接還原頭像區，不用強迫重新登入
+        function restoreUserSession() {
+            try {
+                const saved = localStorage.getItem('travel_kb_user');
+                if (saved) {
+                    const user = JSON.parse(saved);
+                    renderUserProfile(user.name, user.picture);
+                }
+            } catch (e) {
+                console.error("LocalStorage load error (user profile):", e);
+            }
+        }
+
+        // 切換帳號範圍（登入／登出）後，重新載入這個範圍自己的行程／分天／清單資料並重繪畫面，
+        // 不然畫面會繼續顯示剛剛那個範圍（訪客或另一個帳號）留下的舊資料
+        function reloadScopedDataAndRerender() {
+            loadSavedItinerary();
+            loadDayPlan();
+            loadChecklistState();
+            pruneDayPlan();
+            saveDayPlan(); // pruneDayPlan 可能清掉幽靈 id，順手存回去保持一致
+            updateCounts();
+            renderCards();
+            const checklistModal = document.getElementById('checklist-modal');
+            if (checklistModal && !checklistModal.classList.contains('hidden')) renderChecklist();
+        }
+
+        // 登出：清除本機保存的登入資訊，並還原成 Google 登入按鈕
+        function signOutUser() {
+            try {
+                localStorage.removeItem('travel_kb_user');
+            } catch (e) {
+                console.error("LocalStorage remove error (user profile):", e);
+            }
+            if (window.google?.accounts?.id) {
+                google.accounts.id.disableAutoSelect();
+            }
+            const profileDiv = document.getElementById('user-profile');
+            profileDiv.innerHTML = `<div class="g_id_signin" data-type="standard" data-size="small" data-theme="outline" data-text="signin" data-shape="pill"></div>`;
+            if (window.google?.accounts?.id) {
+                google.accounts.id.renderButton(profileDiv.querySelector('.g_id_signin'), { type: 'standard', size: 'small', theme: 'outline', text: 'signin', shape: 'pill' });
+            }
+            reloadScopedDataAndRerender(); // 🔁 退回訪客範圍的行程資料
+            showToast('已登出', false);
+        }
+
+        // 🌤️ 把已經查到天氣的那幾天整理成文字，餵給 AI 當作天氣提醒的依據（沒查到天氣的天不會出現，AI 也就不會亂編）
+        function buildWeatherContextForDays(groupedByDay) {
+            const lines = [];
+            Object.keys(groupedByDay).forEach(dayLabel => {
+                const d = parseInt(dayLabel.replace('Day ', ''), 10);
+                const date = getDateForDayIndex(d);
+                const weather = date ? weatherByDate[formatDateISO(date)] : null;
+                if (weather) lines.push(`${dayLabel}：${weatherIcon(weather.code)} 最高 ${weather.max}°C／最低 ${weather.min}°C`);
+            });
+            return lines.join('\n');
+        }
+
+        /**
+         * ✨ 呼叫 Gemini API，依選取的景點、天氣預報與使用者風格偏好，生成客製化的行程開場白、各天小語與天氣提醒
+         * 設計原則：AI只負責「寫有溫度的文字」，不負責排序或計算時間，降低出錯風險
+         * 回傳格式要求AI輸出JSON，失敗時回傳null，讓畫面自動退回原本的制式文字（優雅降級）
+         */
+        async function callGeminiForNarrative(selectedAttractions, groupedByDay, styleInput) {
+            const attractionList = Object.entries(groupedByDay)
+                .map(([day, items]) => `【${day}】${items.map(i => i.name).join('、')}`)
+                .join('\n');
+            const weatherContext = buildWeatherContextForDays(groupedByDay);
+
+            const prompt = `你是一個溫暖、有畫面感的旅遊行程小編。使用者選了以下大阪景點，已經依天數排好順序：
+${attractionList}
+
+${styleInput ? `使用者特別提到想要的旅遊風格：「${styleInput}」，請讓文字語氣呼應這個風格。` : ''}
+
+${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n請針對這幾天，各給一句實用的天氣因應建議（例如要不要帶傘、室內或戶外景點怎麼安排），並再給一句「打包提醒」（例如要不要帶傘、防曬、薄外套、多帶一雙備用鞋這類主觀建議，不要提到具體品牌或數字價格）。` : ''}
+
+請你只輸出一個JSON物件（不要有其他文字、不要用markdown code fence包起來），格式如下：
+{
+  "opening": "一段30-50字、溫暖有畫面感的行程開場白，歡迎使用者展開這趟大阪之旅",
+  "dayBlurbs": { "Day 1": "一句15-25字、有畫面感的小語，形容這天的行程氛圍", "Day 2": "..." }${weatherContext ? `,
+  "weatherTips": { "Day 1": "一句15-25字、實用的天氣因應建議，只針對上面有列出天氣預報的那幾天生成" },
+  "packingTips": { "Day 1": "一句15-25字、針對這天天氣的打包提醒（帶傘/防曬/外套等主觀建議），只針對上面有列出天氣預報的那幾天生成" }` : ''}
+}
+
+注意：dayBlurbs、weatherTips、packingTips的key都必須完全對應上面【】裡的天數標籤（例如「Day 1」）。不要提到任何具體的營業時間、門票價格、評分數字等事實性資訊，只寫氛圍、感受與主觀建議，這些數字容易過時，交給其他區塊呈現即可。`;
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': GEMINI_API_KEY
+                },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
+            });
+
+            if (!res.ok) throw new Error(`AI生成失敗（狀態碼 ${res.status}）`);
+
+            const data = await res.json();
+            let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            // 防呆：即使有交代不要包markdown code fence，AI偶爾還是會包，這裡順手拆掉
+            text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+            const parsed = JSON.parse(text);
+            if (!parsed.opening || !parsed.dayBlurbs) throw new Error('AI回傳格式不完整');
+            return parsed;
+        }
+
+        // ✨ 按鈕觸發：重新呼叫AI生成行程敘事文字
+        async function regenerateAINarrative() {
+            const selectedAttractions = attractionsData.filter(item => myItineraryIds.has(item.id));
+            if (selectedAttractions.length === 0) {
+                showToast('請先勾選至少一個景點', false);
+                return;
+            }
+
+            const groupedByDay = groupAttractionsByDay(selectedAttractions);
+            if (Object.keys(groupedByDay).length === 0) {
+                showToast('請先把景點拖曳排入某一天，Kinopio 才能依天數幫你寫介紹', false);
+                return;
+            }
+
+            const styleInput = document.getElementById('ai-style-input').value.trim();
+            const btn = document.getElementById('ai-narrative-btn');
+
+            isGeneratingNarrative = true;
+            btn.disabled = true;
+            btn.textContent = '🍄 Kinopio 撰寫中...';
+            generateDynamicTimeline(); // 立刻重新渲染，顯示載入動畫
+
+            try {
+                currentAINarrative = await callGeminiForNarrative(selectedAttractions, groupedByDay, styleInput);
+                currentAINarrative.snapshot = getItineraryStructureSnapshot(); // 記錄這份文字是依哪個分天結構生成的（不只是選了哪些景點）
+                showToast('Kinopio 已為你重新撰寫行程介紹！', true);
+            } catch (err) {
+                console.error('AI敘事生成錯誤：', err);
+                currentAINarrative = null;
+                showToast(`Kinopio 迷路了，暫時顯示預設文字（${err.message}）`, false);
+            } finally {
+                isGeneratingNarrative = false;
+                btn.disabled = false;
+                btn.textContent = '🍄 讓 Kinopio 重新幫你寫行程';
+                generateDynamicTimeline();
+            }
+        }
+
+        // ✨ AI 敘事「是否過期」判斷用的完整快照：不能只比對「選了哪些景點」，
+        // 還要包含「排在哪一天、順序為何」，否則把景點從 Day1 拖到 Day2（選取的 id 集合完全沒變）
+        // 或增減 dayCount 時，dayBlurbs／weatherTips 早就對不上實際分天結果，卻不會被判定為過期。
+        function getItineraryStructureSnapshot() {
+            return JSON.stringify({ dayCount, dayPlan, unassigned: [...unassignedIds].sort() });
+        }
+
+        // 依目前的 dayPlan（使用者手動排定的天數）分組，只回傳已經有排入景點的天
+        function groupAttractionsByDay(selectedAttractions) {
+            const byId = {};
+            selectedAttractions.forEach(item => { byId[item.id] = item; });
+            const grouped = {};
+            for (let d = 1; d <= dayCount; d++) {
+                const items = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
+                if (items.length > 0) grouped[`Day ${d}`] = items;
+            }
+            return grouped;
+        }
+
+        // 把某景點目前所在位置（0=未分配，1..dayCount=第幾天）算出來
+        function findItemLocation(itemId) {
+            if (unassignedIds.includes(itemId)) return 0;
+            const dayIdx = dayPlan.findIndex(day => day.includes(itemId));
+            return dayIdx === -1 ? 0 : dayIdx + 1;
+        }
+
+        // 把景點移到前一天／後一天（0 代表未分配區）
+        function moveItemDay(itemId, delta) {
+            moveItemToDay(itemId, findItemLocation(itemId) + delta);
+        }
+
+        // 把景點直接指定到某一天（0 代表未分配區），給下拉選單這種一步到位的操作用
+        function moveItemToDay(itemId, targetDayIdx) {
+            const curDayIdx = findItemLocation(itemId);
+            const newDayIdx = Math.max(0, Math.min(dayCount, targetDayIdx));
+            if (newDayIdx === curDayIdx) return;
+            removeFromAllDaySlots(itemId);
+            if (newDayIdx === 0) unassignedIds.push(itemId);
+            else dayPlan[newDayIdx - 1].push(itemId);
+            saveDayPlan();
+            generateDynamicTimeline();
+        }
+
+        // 🗑 完全從行程移除（跟「移出這一天」是不同操作：移出只是退回未分配，這個是真的刪掉）
+        // 為了避免跟「移出」誤觸搞混，設計成兩段式點擊：第一次點只會變成「確定？」，2.5 秒內沒點第二次會自動恢復
+        let deleteConfirmTimeout = null;
+        function handleDeleteItemClick(btn, itemId, itemName) {
+            if (btn.dataset.confirming === '1') {
+                clearTimeout(deleteConfirmTimeout);
+                toggleItinerary(itemId, itemName); // 完全從 myItineraryIds 移除，會自動觸發重新渲染
+                return;
+            }
+            // 記住原本的 class（兩個呼叫來源的按鈕大小/樣式不一樣：小卡片是固定 32×32px 正方形圖示鈕，
+            // 未分配區的小標籤是自動寬度），確認倒數結束後才能精準復原，而不是用 classList add/remove 硬猜
+            if (!btn.dataset.originalClass) btn.dataset.originalClass = btn.className;
+            btn.dataset.confirming = '1';
+            btn.textContent = '確定？';
+            // 確認狀態一律換成「自動寬度的膠囊按鈕」，不再塞進原本給單一圖示用的固定正方形裡——
+            // 「確定？」三個字塞在 32×32px 的方框會被擠成兩行，看起來很隨便，這裡直接給它需要的寬度
+            btn.className = 'shrink-0 h-8 px-3 rounded-lg flex items-center justify-center text-xs font-bold text-white bg-[#a8362b] hover:bg-[#8a2a21] whitespace-nowrap transition';
+            clearTimeout(deleteConfirmTimeout);
+            deleteConfirmTimeout = setTimeout(() => {
+                btn.dataset.confirming = '0';
+                btn.textContent = '🗑';
+                btn.className = btn.dataset.originalClass;
+            }, 2500);
+        }
+
+        // 在同一天（或未分配區）內，把景點往上/往下移一格（觸控裝置無法拖曳時的替代操作）
+        function moveItemWithinDay(itemId, delta) {
+            const dayIdx = findItemLocation(itemId);
+            const list = dayIdx === 0 ? unassignedIds : dayPlan[dayIdx - 1];
+            const idx = list.indexOf(itemId);
+            if (idx === -1) return;
+            const newIdx = idx + delta;
+            if (newIdx < 0 || newIdx >= list.length) return;
+            [list[idx], list[newIdx]] = [list[newIdx], list[idx]];
+            saveDayPlan();
+            generateDynamicTimeline();
+        }
+
+        // 渲染「未分配」區的小卡片（可拖曳，也提供一鍵排入 Day1 按鈕方便手機使用者）
+        function renderUnassignedChip(item) {
+            const dayOptions = Array.from({ length: dayCount }, (_, i) => i + 1)
+                .map(d => `<option value="${d}">排入 Day${d}</option>`).join('');
+            const safeName = escapeHtml(item.name);
+            const jsAttrName = escapeJsAttr(item.name);
+            return `
+                <div class="flex items-center gap-2 bg-[#faf6ee] border border-[#d8cba8] rounded-xl px-3 py-2 shadow-sm cursor-grab active:cursor-grabbing"
+                     draggable="true"
+                     ondragstart="handleCardDragStart(event, '${item.id}')"
+                     ondragover="event.preventDefault()"
+                     ondrop="handleCardDrop(event, 0, '${item.id}')">
+                    <span class="text-slate-300 text-xs select-none">⠿</span>
+                    <span class="text-xs font-bold text-slate-700">${safeName}</span>
+                    <select onchange="moveItemToDay('${item.id}', parseInt(this.value, 10))" class="text-[10px] text-[#3d7290] font-bold bg-transparent border-none ml-1 focus:outline-none">
+                        <option value="" selected disabled>排入天數 ▶</option>
+                        ${dayOptions}
+                    </select>
+                    <span class="w-px h-4 bg-[#d8cba8]"></span>
+                    <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="text-[10px] px-1 py-0.5 rounded text-[#c46b5c] hover:bg-[#f6e9e6] whitespace-nowrap">🗑</button>
+                </div>
+            `;
+        }
+
+        // 渲染某一天裡的景點卡片（可拖曳排序，並附上觸控裝置可用的按鈕操作）
+        function renderDayItemCard(item, dayIndex, idx, total, scheduleEntry, dayDate, dayIsRainy) {
+            let categoryIcon = '🛍️';
+            if (item.category) {
+                if (item.category.includes('主題樂園')) categoryIcon = '🎢';
+                else if (item.category.includes('歷史') || item.category.includes('文化')) categoryIcon = '⛩️';
+                else if (item.category.includes('自然') || item.category.includes('公園')) categoryIcon = '🌳';
+                else if (item.category.includes('美食')) categoryIcon = '🍜';
+                else if (item.category.includes('地標')) categoryIcon = '📍';
+            }
+
+            // 🎨 色彩角色只分 4 種：slate=中性事實、indigo=主要資訊、amber=需注意提醒、rose=衝突/高風險，
+            // 不再讓每種資訊各自配一種顏色——顏色種類一多，使用者就得先學一套色碼才能看懂卡片
+            const timeBadge = scheduleEntry
+                ? `<span class="text-xs font-bold px-2 py-0.5 rounded-md ${scheduleEntry.outOfHours ? 'text-amber-700 bg-amber-100' : 'text-[#234c66] bg-[#eaf1f4]'}">🕐 ${formatMinutesToClock(scheduleEntry.startMin)} - ${formatMinutesToClock(scheduleEntry.endMin)}</span>`
+                : '';
+            const safeHours = escapeHtml(item.hours);
+            const outOfHoursWarning = scheduleEntry?.outOfHours
+                ? `<p class="text-xs text-amber-700 font-bold">⚠️ 這個時段可能超出營業時間（${safeHours}），建議調整順序或出發時間</p>`
+                : '';
+
+            // 📅 定休日防呆：只在知道實際日期、且能明確判讀固定公休星期幾時才比對，避免誤判
+            const isClosedToday = dayDate && getClosedWeekdays(item).includes(dayDate.getDay());
+            const closedWarning = isClosedToday
+                ? `<p class="text-xs text-[#a8362b] font-bold">📅 這天可能是公休日（${safeHours}），建議改天或上官網確認</p>`
+                : '';
+            const warningBlock = (outOfHoursWarning || closedWarning)
+                ? `<div class="mt-3 space-y-1">${outOfHoursWarning}${closedWarning}</div>`
+                : '';
+
+            // ⏰ 最終入場／最後點餐：改成純文字＋圖示，不再用膠囊背景——這排資訊只留「時段」一顆實心徽章，
+            // 其餘全部降級成同等視覺權重的純文字，才不會每張卡片都掛滿 6-8 顆搶眼的圓角標籤
+            const lastEntryInfo = getLastEntryInfo(item);
+            const lastEntryText = lastEntryInfo ? `<span class="text-amber-700 font-bold">${escapeHtml(lastEntryInfo)}</span>` : '';
+
+            // ☔ 雨天備案標記：同樣改成純文字，室內友善＝中性事實（slate），戶外＋下雨＝需注意（amber）
+            let rainText = '';
+            if (dayIsRainy) {
+                rainText = isIndoorFriendly(item)
+                    ? `<span class="text-slate-500">🏠 雨天備案佳</span>`
+                    : `<span class="text-amber-700 font-bold">☔ 戶外景點，這天有雨</span>`;
+            }
+
+            // 🔒 這張卡片還會用到的其餘 CSV 欄位，統一跳脫
+            const safeName = escapeHtml(item.name);
+            const safeStay = escapeHtml(item.stay || '1.5 - 2 小時');
+            const safeTicket = escapeHtml(item.ticket || '參閱官網');
+            const safeReason = escapeHtml(item.reason || '當地必訪熱門推薦景點！');
+            const safeWebsite = escapeHtml(item.website);
+            const jsAttrName = escapeJsAttr(item.name); // 給 onclick="...('${jsAttrName}')" 用
+
+            return `
+                <div class="relative bg-[#faf6ee] paper-texture rounded-sm border-2 border-dashed border-[#c9a876] p-4 shadow-sm hover:shadow-md transition duration-300 cursor-grab active:cursor-grabbing"
+                     draggable="true"
+                     ondragstart="handleCardDragStart(event, '${item.id}')"
+                     ondragover="event.preventDefault()"
+                     ondrop="handleCardDrop(event, ${dayIndex}, '${item.id}')">
+                    <div class="flex justify-between items-start gap-3">
+                        <div class="flex items-start gap-2 min-w-0">
+                            <span class="text-slate-300 text-sm mt-1 select-none" title="拖曳調整順序">⠿</span>
+                            <div class="min-w-0">
+                                <!-- 分類圖示直接放進標題行內（不再是右上角孤立的圓形圖示），
+                                     由左到右的閱讀動線更自然，右上角只留一個刪除鈕 -->
+                                <h4 class="hand text-base font-bold text-slate-800 flex items-center gap-1.5">
+                                    <span>${categoryIcon}</span>${safeName}
+                                </h4>
+                                <p class="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                                    ${timeBadge}
+                                    <span>🚶 <span class="font-bold text-[#2c5f7c]">${safeStay}</span></span>
+                                    ${lastEntryText}
+                                    ${rainText}
+                                </p>
+                            </div>
+                        </div>
+                        <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-[#c46b5c] hover:bg-[#f6e9e6] hover:text-[#b04938] transition">🗑</button>
+                    </div>
+                    ${warningBlock}
+                    <div class="flex items-center gap-3 mt-3 pt-3 border-t border-[#f5ecd9] text-xs text-slate-500">
+                        <span class="flex items-center gap-1">🎫 ${safeTicket}</span>
+                        <span class="flex items-center gap-1">🕐 ${safeHours || '請見官網'}</span>
+                        <div class="ml-auto flex items-center gap-1.5 shrink-0">
+                            <a href="${getMapUrl(item)}" target="_blank" rel="noopener noreferrer" title="開啟地圖" class="w-[26px] h-[26px] rounded-lg border border-[#d8cba8] flex items-center justify-center text-slate-500 hover:bg-[#f5ecd9]">📍</a>
+                            <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟官網" class="w-[26px] h-[26px] rounded-lg border border-[#d8cba8] flex items-center justify-center text-slate-500 hover:bg-[#f5ecd9]">🔗</a>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed mt-3 pt-3 border-t border-[#f5ecd9]">
+                        💡 ${safeReason}
+                    </p>
+                    <!-- 🖐️ 手機無法用原生拖曳排序（HTML5 drag-and-drop 觸控裝置大多不支援），
+                         這排按鈕才是手機使用者實際會用到的排序方式，特意放大到接近 44px 的觸控友善尺寸。
+                         用分隔線把「同天排序」（↑↓）跟「換天」（◀▶）視覺分成兩群，並各自標上極小字說明，
+                         避免使用者搞不清楚四顆長得一樣的方向鈕功能其實不同 -->
+                    <div class="flex items-center gap-2 mt-3 pt-3 border-t border-[#f5ecd9] flex-wrap">
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="flex items-center gap-1">
+                                <button onclick="moveItemWithinDay('${item.id}', -1)" ${idx === 0 ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${idx === 0 ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="往上移">↑</button>
+                                <button onclick="moveItemWithinDay('${item.id}', 1)" ${idx === total - 1 ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${idx === total - 1 ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="往下移">↓</button>
+                            </div>
+                            <span class="text-[10px] text-slate-400 font-medium">同天排序</span>
+                        </div>
+                        <span class="w-px h-8 bg-[#d8cba8] shrink-0"></span>
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="flex items-center gap-1">
+                                <button onclick="moveItemDay('${item.id}', -1)" ${dayIndex <= 1 ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${dayIndex <= 1 ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="移到前一天">◀</button>
+                                <button onclick="moveItemDay('${item.id}', 1)" ${dayIndex >= dayCount ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${dayIndex >= dayCount ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="移到後一天">▶</button>
+                            </div>
+                            <span class="text-[10px] text-slate-400 font-medium">換天</span>
+                        </div>
+                        <button onclick="moveItemDay('${item.id}', ${-dayIndex})" class="ml-auto h-9 px-3 text-xs font-bold rounded-lg border border-[#d8cba8] bg-[#f5ecd9] text-slate-600 hover:bg-[#e8dcc8] active:bg-[#d8cba8]" title="移出這一天，退回未分配區">移出</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * 旅圖知情所 - 手動分天行程表
+         * 功能：使用者自訂總天數，並用拖曳（或按鈕）把景點排入指定的天數與順序
+         */
+        function generateDynamicTimeline() {
+            const timelineContainer = document.getElementById('timeline-container');
+            if (!timelineContainer) return;
+
+            // 0. 防禦性清理：確保 dayPlan/未分配清單跟目前的行程/資料源同步
+            pruneDayPlan();
+
+            const byId = {};
+            attractionsData.forEach(item => { byId[item.id] = item; });
+            const selectedCount = myItineraryIds.size;
+
+            // 如果行程是空的，優雅呈現提示
+            if (selectedCount === 0) {
+                document.getElementById('ai-style-input-section').classList.add('hidden');
+                timelineContainer.innerHTML = `
+                    <div class="py-12 text-center text-slate-400">
+                        <p class="text-3xl">🧭</p>
+                        <p class="text-sm font-bold mt-2">您的行程目前是空的</p>
+                        <p class="text-xs mt-1 text-slate-400">請先在上方卡片點擊「＋ 加入我的行程」吧！</p>
+                    </div>
+                `;
+                return;
+            }
+            document.getElementById('ai-style-input-section').classList.remove('hidden');
+
+            let timelineHTML = `
+                <div class="max-w-3xl mx-auto space-y-6 px-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8dcc8] pb-4">
+                        <h3 class="hand text-lg font-black text-slate-800 flex items-center gap-2">
+                            <span>🗓️</span> 手動排程行程表
+                        </h3>
+                        <div class="flex items-center gap-2 bg-[#e8dcc8] rounded-xl px-3 py-1.5">
+                            <span class="text-xs font-bold text-slate-600">總天數</span>
+                            <button onclick="setDayCount(${dayCount - 1})" class="w-6 h-6 rounded-lg bg-[#faf6ee] shadow-sm text-slate-600 font-bold text-sm hover:bg-[#f5ecd9]" ${dayCount <= 1 ? 'disabled' : ''}>−</button>
+                            <span class="text-sm font-black text-[#2c5f7c] w-5 text-center">${dayCount}</span>
+                            <button onclick="setDayCount(${dayCount + 1})" class="w-6 h-6 rounded-lg bg-[#faf6ee] shadow-sm text-slate-600 font-bold text-sm hover:bg-[#f5ecd9]" ${dayCount >= 14 ? 'disabled' : ''}>＋</button>
+                        </div>
+                    </div>
+            `;
+
+            // 🛡️ 防呆：比對「手動設定的總天數」跟「去程/回程航班暗示的實際天數」是否一致，不一致時提示但不強制覆蓋
+            const impliedDayCount = getFlightImpliedDayCount();
+            if (impliedDayCount !== null && impliedDayCount !== dayCount) {
+                timelineHTML += `
+                    <div class="flex flex-wrap items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                        <p class="text-xs font-bold text-amber-700">⚠️ 依航班資訊，行程實際是 ${impliedDayCount} 天（${currentArrivalQueryDate} ~ ${currentDepartureQueryDate}），但目前設定為 ${dayCount} 天</p>
+                        <button onclick="setDayCount(${impliedDayCount})" class="shrink-0 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition">套用 ${impliedDayCount} 天</button>
+                    </div>
+                `;
+            } else if (impliedDayCount !== null) {
+                timelineHTML += `
+                    <div class="text-[11px] text-[#6b8f71] font-medium px-1">✅ 天數已與航班資訊同步（${currentArrivalQueryDate} ~ ${currentDepartureQueryDate}，共 ${impliedDayCount} 天）</div>
+                `;
+            }
+
+            // 🍄 Kinopio 開場白：載入中顯示動畫，成功則顯示 Kinopio 寫的文字，失敗/尚未生成則不顯示（優雅降級，不影響行程正常運作）
+            if (isGeneratingNarrative) {
+                timelineHTML += `
+                    <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4 animate-pulse">
+                        <div class="h-3 bg-[#cab8d4] rounded w-3/4 mb-2"></div>
+                        <div class="h-3 bg-[#cab8d4] rounded w-1/2"></div>
+                        <p class="text-[11px] text-[#9678a5] mt-2">🍄 Kinopio 正在幫你規劃行程...</p>
+                    </div>
+                `;
+            } else if (currentAINarrative?.opening) {
+                const isStale = getItineraryStructureSnapshot() !== currentAINarrative.snapshot;
+                timelineHTML += `
+                    <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4">
+                        <div class="text-[10px] font-bold text-[#9678a5] mb-1">🍄 Kinopio 的行程小提醒</div>
+                        <p class="text-sm text-[#2e2639] leading-relaxed">🍄 Kinopio 說：${escapeHtml(currentAINarrative.opening)}</p>
+                        ${isStale ? '<p class="text-[10px] text-amber-500 mt-2">行程內容有更新，按上方按鈕可重新生成介紹</p>' : ''}
+                    </div>
+                `;
+            }
+
+            // ✈️ 若有查到「去程」航班資訊，插入在 Day 1 最前面，作為整趟行程的起點
+            if (currentArrivalFlight) {
+                const warnBlock = currentArrivalFlight.isOsakaAirport === false
+                    ? `<div class="text-[11px] text-amber-600 font-bold mt-2">⚠️ 這不是大阪的機場，請回上方確認航班號碼/日期/方向是否選對</div>`
+                    : '';
+                timelineHTML += `
+                    <!-- 航班抵達卡片 -->
+                    <div class="bg-[#eef3f5] border border-[#dde7ea] rounded-2xl p-4">
+                        <div class="text-xs font-bold text-[#37505f] mb-1">🛬 航班 ${escapeHtml(currentArrivalFlight.number)} 抵達</div>
+                        <div class="text-sm font-bold text-slate-800">${escapeHtml(currentArrivalFlight.airport)}｜${escapeHtml(currentArrivalFlight.time)}（日本當地時間）</div>
+                        <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentArrivalFlight.model)}（時間僅供參考，請以航空公司公告為準）</div>
+                        ${warnBlock}
+                    </div>
+                `;
+            }
+
+            // 📥 未分配區：剛加入行程、還沒被拖進任何一天的景點
+            timelineHTML += `
+                <div class="bg-[#f5ecd9] border-2 border-dashed border-[#d8cba8] rounded-2xl p-4"
+                     ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, 0)">
+                    <div class="text-xs font-bold text-slate-500 mb-3">
+                        📥 尚未排入任何一天${unassignedIds.length === 0 ? '<span class="text-[#7fa382] font-normal ml-1">・全部景點都已排好囉！</span>' : '（拖曳景點卡片到下方對應的 Day 裡）'}
+                    </div>
+                    <div class="flex flex-wrap gap-2 min-h-[2rem]">
+                        ${unassignedIds.map(id => byId[id] ? renderUnassignedChip(byId[id]) : '').join('')}
+                    </div>
+                </div>
+            `;
+
+            // 📅 依天數渲染每一天的排程區塊
+            for (let d = 1; d <= dayCount; d++) {
+                const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
+                const dayBlurb = currentAINarrative?.dayBlurbs?.[`Day ${d}`] || '';
+                const dayDate = getDateForDayIndex(d);
+                const dayLabel = dayDate ? `Day ${d}・${formatDateLabel(dayDate)}` : `Day ${d}`;
+                // 🌤️ 這天若查得到天氣預報就顯示小徽章；查不到（旅遊日期太遠、還沒查航班）就靜默不顯示
+                const dayWeather = dayDate ? weatherByDate[formatDateISO(dayDate)] : null;
+                const weatherBadge = dayWeather
+                    ? `<span class="text-[11px] font-bold text-[#496475] bg-[#eef3f5] px-2 py-1 rounded-lg flex items-center gap-1">${weatherIcon(dayWeather.code)} ${dayWeather.max}°/${dayWeather.min}°C</span>`
+                    : '';
+                // 🌇 日落時間查得到才顯示，方便安排夜景/展望台這類黃昏後才精彩的景點
+                const daySunset = dayDate ? sunsetByDate[formatDateISO(dayDate)] : null;
+                const sunsetBadge = daySunset
+                    ? `<span class="text-[11px] font-bold text-orange-700 bg-orange-50 px-2 py-1 rounded-lg flex items-center gap-1">🌇 日落 ${formatSunsetJST(daySunset)}</span>`
+                    : '';
+                // ✨ AI 天氣貼心提醒：只在 AI 有生成、且這天確實有天氣資料時顯示
+                const weatherTip = currentAINarrative?.weatherTips?.[`Day ${d}`];
+                // ✨ AI 打包提醒：延伸自天氣提醒的同一次呼叫，一樣只講主觀建議（帶不帶傘、防曬），不涉及任何事實數字
+                const packingTip = currentAINarrative?.packingTips?.[`Day ${d}`];
+                // ☔ 這天是否有雨：給下面每張景點卡片判斷要不要顯示「雨天備案」標記
+                const dayIsRainy = dayWeather ? isRainyWeatherCode(dayWeather.code) : false;
+                // 🕐 本地即時運算這天的時間軸（零 API 成本，拖曳/換天後每次渲染都會自動重算）
+                const schedule = computeDaySchedule(d, dayItems);
+
+                // 🛡️ Day 1 出發時間不能早於班機實際降落時間（人都還沒下飛機，不可能開始逛景點）
+                const earliestStart = d === 1 ? getDay1EarliestStartTime() : null;
+                const currentStart = getDayStartTime(d);
+                const startTooEarly = earliestStart && clockToMinutes(currentStart) < clockToMinutes(earliestStart);
+                const startTimeWarning = startTooEarly ? `
+                    <div class="w-full text-[11px] text-amber-600 font-bold flex items-center gap-2 flex-wrap">
+                        ⚠️ 出發時間比航班抵達時間（${earliestStart}）還早，人都還沒下飛機
+                        <button onclick="setDayStartTime(1, '${earliestStart}')" class="px-2 py-0.5 text-white bg-amber-600 hover:bg-amber-700 rounded-lg">套用抵達時間</button>
+                    </div>
+                ` : '';
+
+                timelineHTML += `
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2 mb-3">
+                            <div class="w-7 h-7 rounded-full bg-[#2c5f7c] text-white flex items-center justify-center text-xs font-bold shadow-md shadow-[#d3e3e9] shrink-0">${d}</div>
+                            <div class="hand bg-[#eaf1f4] text-[#1a3a4a] px-4 py-1.5 rounded-xl text-xs font-bold shadow-sm">
+                                ${dayLabel}${dayBlurb ? `：${escapeHtml(dayBlurb)}` : (dayItems.length > 0 ? `：共 ${dayItems.length} 個景點` : '')}
+                            </div>
+                            <label class="flex items-center gap-1 text-[11px] text-slate-500 font-bold">
+                                🚩 出發
+                                <input type="time" value="${escapeHtml(currentStart)}" ${earliestStart ? `min="${escapeHtml(earliestStart)}"` : ''} onchange="setDayStartTime(${d}, this.value)" class="border ${startTooEarly ? 'border-amber-400' : 'border-[#d8cba8]'} rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
+                            </label>
+                            ${weatherBadge}
+                            ${sunsetBadge}
+                            ${weatherTip ? `<span class="w-full text-[11px] text-[#6b5a7a] font-medium flex items-center gap-1">🍄 ${escapeHtml(weatherTip)}</span>` : ''}
+                            ${packingTip ? `<span class="w-full text-[11px] text-[#7f6690] font-medium flex items-center gap-1">🎒 ${escapeHtml(packingTip)}</span>` : ''}
+                            ${startTimeWarning}
+                        </div>
+                        <div class="pl-9 ml-3.5 border-l-2 border-[#d3e3e9] space-y-3 pb-1 min-h-[3.5rem]"
+                             ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, ${d})">
+                            ${dayItems.length === 0
+                                ? `<div class="text-xs text-slate-300 italic py-3 pl-3">（空）把景點拖曳到這裡</div>`
+                                : dayItems.map((item, idx) => {
+                                    const cardHTML = renderDayItemCard(item, d, idx, dayItems.length, schedule[idx], dayDate, dayIsRainy);
+                                    const transitMin = schedule[idx].transitToNextMin;
+                                    // 🚃 卡片之間顯示區域距離啟發式估算出的交通時間，直接回應「不知道該預留多少交通時間」的痛點
+                                    const connectorHTML = transitMin !== null ? `
+                                        <div class="flex items-center gap-2 pl-1 text-[11px] text-slate-500 font-medium">
+                                            <span class="text-[#5c8aa0]">⬇️</span>
+                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🚃 預估交通約 ${transitMin} 分鐘（${getMainAreaKey(item.area)} → ${getMainAreaKey(dayItems[idx + 1].area)}）</span>
+                                        </div>
+                                    ` : '';
+                                    return cardHTML + connectorHTML;
+                                }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // ✈️ 若有查到「回程」航班資訊，用實際資料取代通用結尾文字
+            const endingBlock = currentDepartureFlight
+                ? `
+                    <div class="bg-[#eef3f5] border border-[#dde7ea] rounded-2xl p-4">
+                        <div class="text-xs font-bold text-[#37505f] mb-1">🛫 航班 ${escapeHtml(currentDepartureFlight.number)} 起飛</div>
+                        <div class="text-sm font-bold text-slate-800">${escapeHtml(currentDepartureFlight.airport)}｜${escapeHtml(currentDepartureFlight.time)}（日本當地時間）</div>
+                        <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentDepartureFlight.model)}（時間僅供參考，記得提早2-3小時抵達機場）</div>
+                        ${currentDepartureFlight.isOsakaAirport === false ? `<div class="text-[11px] text-amber-600 font-bold mt-2">⚠️ 這不是大阪的機場，請回上方確認航班號碼/日期/方向是否選對</div>` : ''}
+                    </div>
+                `
+                : `
+                    <div class="bg-[#eef3ea] text-[#3f5642] px-4 py-1.5 rounded-xl inline-block text-xs font-bold shadow-sm">
+                        ✈️ 行程完美結束，準備前往機場搭機返台！
+                    </div>
+                `;
+
+            timelineHTML += `
+                    <div class="pt-2">
+                        ${endingBlock}
+                    </div>
+                </div>
+            `;
+
+            timelineContainer.innerHTML = timelineHTML;
+        }
+    </script>
+</body>
+</html>

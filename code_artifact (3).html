@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>旅圖知情所｜動態景點資訊庫</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google OAuth 2.0 SDK -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* 隱藏水平滾動條但保持滾動功能 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col text-slate-800 pb-12">
+    <!-- 頂部導覽列 Header -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+            <!-- 品牌 Title -->
+            <div class="flex items-center gap-3 shrink-0">
+                <div class="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black text-xl shadow-md shadow-indigo-200">
+                    旅
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-slate-900 leading-tight">旅圖知情所</h1>
+                    <p class="text-[11px] text-slate-500">Travel Knowledge Base</p>
+                </div>
+            </div>
+
+            <!-- 右側功能區：行程數目 & Google 登入狀態 -->
+            <div class="flex items-center gap-3">
+                <!-- 導出行程按鈕 -->
+                <button onclick="openExportModal()" class="hidden sm:flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition">
+                    <span>📋</span> 匯出行程
+                </button>
+
+                <!-- Google Auth UI -->
+                <div id="g_id_onload"
+                    data-client_id="559913588123-s5v7ji2013cf3u94ffqenmcqfj2uetsf.apps.googleusercontent.com"
+                    data-callback="handleCredentialResponse"
+                    data-auto_prompt="true">
+                </div>
+                <div id="user-profile" class="flex items-center gap-2">
+                    <div class="g_id_signin" data-type="standard" data-size="small" data-theme="outline" data-text="signin" data-shape="pill"></div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要內容區 Main Section -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full flex-1">
+        <!-- 搜尋列與分類篩選 Chips -->
+        <div class="space-y-4 mb-6">
+            <div class="flex flex-col sm:flex-row gap-3 items-center justify-between">
+                <!-- 關鍵字搜尋欄 -->
+                <div class="relative w-full sm:w-96">
+                    <svg class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    <input type="text" id="search-input" oninput="handleSearch()" placeholder="搜尋景點名稱、地區、關鍵字..."
+                    class="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition shadow-sm">
+                </div>
+
+                <!-- 頁籤切換：所有景點 vs 我的行程 -->
+                <div class="flex items-center bg-slate-200/80 p-1 rounded-2xl w-full sm:w-auto shrink-0">
+                    <button id="tab-all" onclick="switchTab('all')" class="flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition bg-white text-slate-800 shadow-sm">
+                        所有景點 (<span id="count-all">0</span>)
+                    </button>
+                    <button id="tab-itinerary" onclick="switchTab('itinerary')" class="flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5">
+                        <span>我的行程</span>
+                        <span id="count-itinerary" class="px-2 py-0.5 text-[10px] font-extrabold bg-indigo-600 text-white rounded-full">0</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 分類 Filter Chips -->
+            <div id="category-chips" class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                <!-- 動態注入分類標籤 -->
+            </div>
+        </div>
+
+        <!-- 手機版專用：匯出行程按鈕 -->
+        <div class="sm:hidden mb-4">
+            <button onclick="openExportModal()" class="w-full py-2.5 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-center gap-1.5">
+                <span>📋</span> 查看並匯出已選行程表格
+            </button>
+        </div>
+
+        <!-- 骨架屏 Skeleton Screen (載入中) -->
+        <div id="skeleton-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="bg-white rounded-[2rem] h-96 animate-pulse border border-slate-100"></div>
+            <div class="bg-white rounded-[2rem] h-96 animate-pulse border border-slate-100 hidden md:block"></div>
+            <div class="bg-white rounded-[2rem] h-96 animate-pulse border border-slate-100 hidden lg:block"></div>
+        </div>
+
+        <!-- 景點卡片展示網格 Card Grid -->
+        <div id="attraction-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 hidden">
+            <!-- 景點卡片由 JS 動態渲染 -->
+        </div>
+
+        <!-- 無資料提示 Empty State -->
+        <div id="empty-state" class="hidden py-16 text-center space-y-3">
+            <div class="text-5xl">🧭</div>
+            <h3 class="text-base font-bold text-slate-700">沒有找到符合條件的景點</h3>
+            <p class="text-xs text-slate-400">請嘗試更換搜尋關鍵字或分類標籤</p>
+        </div>
+
+        <!-- AI 智能時間軸區塊 (新增) -->
+        <div id="timeline-container" class="mt-12 pt-10 border-t border-slate-200 hidden">
+            <!-- 這裡會由 JS 自動動態渲染出精美的垂直時間軸 -->
+        </div>
+    </main>
+
+    <!-- 匯出行程 Modal (以表格化方式呈現) -->
+    <div id="export-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span>🗓️</span> 我的行程清單總覽
+                </h3>
+                <button onclick="closeExportModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-4">
+                <p class="text-xs text-slate-500">已自動為您整理選取景點的表格資訊，您可以直接複製或匯出：</p>
+                <!-- 表格預覽 Table Format -->
+                <div class="overflow-x-auto border border-slate-200 rounded-xl">
+                    <table class="w-full text-left text-xs text-slate-600">
+                        <thead class="bg-slate-50 text-slate-800 font-bold border-b border-slate-200">
+                            <tr>
+                                <th class="p-3">景點名稱</th>
+                                <th class="p-3">地區</th>
+                                <th class="p-3">建議停留</th>
+                                <th class="p-3">門票</th>
+                                <th class="p-3">營業時間</th>
+                            </tr>
+                        </thead>
+                        <tbody id="export-table-body" class="divide-y divide-slate-100">
+                            <!-- JS 動態寫入 -->
+                        </tbody>
+                    </table>
+                </div>
+                <!-- 複製與純文字 Markdown 區塊 -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Markdown 表格格式純文字：</label>
+                    <textarea id="export-textarea" readonly class="w-full h-32 p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none"></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button onclick="copyExportText()" class="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition shadow-sm">
+                    複製表格文字
+                </button>
+                <button onclick="closeExportModal()" class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+                    關閉
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 動態通知 Toast 元件 -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-50 transform translate-y-20 opacity-0 pointer-events-none transition-all duration-300 ease-out flex items-center gap-3 px-5 py-4 bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-800 text-sm">
+        <span id="toast-icon" class="text-lg"></span>
+        <span id="toast-message" class="font-medium"></span>
+    </div>
+
+    <!-- 邏輯腳本 JS -->
+    <script>
+        // CSV Google Sheet 發布網址
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQSxl1EXWF8dEf5HPjdaaa9k0Kk1yRaBJqOVfT3q4msemeziLnprsfw6YygLcUUVzqPRrLwIKqCDyHd/pub?gid=1583791343&single=true&output=csv';
+        
+        // 備用資料集 (Fallback Mock Data)
+        const MOCK_DATA = [
+            {
+                id: "attraction-1",
+                name: "大阪海遊館",
+                category: "主題樂園,自然景觀",
+                rating: "4.6",
+                image: "https://images.unsplash.com/photo-1542044896530-05d85be9b11a?auto=format&fit=crop&w=800&q=80",
+                area: "大阪灣區 (港區)",
+                address: "大阪市港區海岸通1-1-10",
+                reason: "世界最大級水族館！近距離直擊巨大鯨鯊悠游，震撼感滿分。",
+                hours: "10:00 - 20:00",
+                hoursRemark: "(依季節每日變動)",
+                ticket: "約 ¥2,700",
+                ticketRemark: "🏷️ 持周遊卡享折扣",
+                transport: "大阪港站 徒步5分",
+                transportRemark: "地鐵中央線直達",
+                stay: "2.5 - 3 小時",
+                stayRemark: "建議下午前往",
+                website: "https://www.kaiyukan.com/"
+            },
+            {
+                id: "attraction-2",
+                name: "日本環球影城 (USJ)",
+                category: "主題樂園",
+                rating: "4.7",
+                image: "https://images.unsplash.com/photo-1505995433366-e12047f3f144?auto=format&fit=crop&w=800&q=80",
+                area: "此花區",
+                address: "大阪府大阪市此花區櫻島2-1-33",
+                reason: "超級任天堂世界與哈利波特魔法世界必訪！沉浸式娛樂極致體驗。",
+                hours: "08:30 - 21:30",
+                hoursRemark: "(每日開園時間不同)",
+                ticket: "約 ¥8,600 起",
+                ticketRemark: "🏷️ 建議預先購買快速通關",
+                transport: "JR 影城城鎮站 徒步1分",
+                transportRemark: "JR 櫻島線直達",
+                stay: "全天 (6-8小時)",
+                stayRemark: "建議提早1小時排隊入園",
+                website: "https://www.usj.co.jp/"
+            },
+            {
+                id: "attraction-3",
+                name: "大阪城天守閣",
+                category: "經典地標,歷史古蹟",
+                rating: "4.5",
+                image: "https://images.unsplash.com/photo-1590559899731-a382839e5549?auto=format&fit=crop&w=800&q=80",
+                area: "中央區",
+                address: "大阪市中央區大阪城1-1",
+                reason: "日本三大名城之一，登上頂樓展望台俯瞰大阪市區絕佳美景。",
+                hours: "09:00 - 17:00",
+                hoursRemark: "(最終入館 16:30)",
+                ticket: "約 ¥600",
+                ticketRemark: "🏷️ 持周遊卡免費入場",
+                transport: "谷町四丁目站 徒步10分",
+                transportRemark: "地鐵谷町線/中央線",
+                stay: "1.5 - 2 小時",
+                stayRemark: "公園四季皆宜賞花",
+                website: "https://www.osakacastle.net/"
+            }
+        ];
+
+        // 應用程式狀態 State Management
+        let attractionsData = [];
+        let myItineraryIds = new Set();
+        let currentCategory = 'ALL';
+        let currentKeyword = '';
+        let currentTab = 'all'; // 'all' or 'itinerary'
+
+        // 初始化 Initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSavedItinerary();
+            fetchAttractionsData();
+        });
+
+        // 讀取 LocalStorage 保留的行程
+        function loadSavedItinerary() {
+            try {
+                const saved = localStorage.getItem('travel_kb_itinerary');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    myItineraryIds = new Set(parsed);
+                }
+            } catch(e) {
+                console.error("LocalStorage load error:", e);
+            }
+        }
+
+        // 儲存行程至 LocalStorage
+        function saveItinerary() {
+            try {
+                localStorage.setItem('travel_kb_itinerary', JSON.stringify([...myItineraryIds]));
+            } catch(e) {
+                console.error("LocalStorage save error:", e);
+            }
+            updateCounts();
+        }
+
+        // CSV 資料讀取與防呆解析
+        async function fetchAttractionsData() {
+            try {
+                const res = await fetch(CSV_URL);
+                if (!res.ok) throw new Error("CSV Fetch failed");
+                const text = await res.text();
+                const parsedData = parseCSVData(text);
+                if (parsedData && parsedData.length > 0) {
+                    attractionsData = parsedData;
+                } else {
+                    attractionsData = MOCK_DATA;
+                }
+            } catch (err) {
+                console.warn("無法取得線上 CSV，啟用預設測試資料 (Fallback Data):", err);
+                attractionsData = MOCK_DATA;
+            } finally {
+                document.getElementById('skeleton-grid').classList.add('hidden');
+                document.getElementById('attraction-grid').classList.remove('hidden');
+                renderCategoryChips();
+                renderCards();
+                updateCounts();
+            }
+        }
+
+        // 模糊欄位尋找器 (findCol) ＆ CSV 解析
+        function parseCSVData(csvText) {
+            const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
+            if (lines.length < 2) return null;
+            
+            // 簡易 CSV split (處理引號內的逗號)
+            const parseRow = row => {
+                const result = [];
+                let insideQuote = false;
+                let entry = '';
+                for (let char of row) {
+                    if (char === '"') insideQuote = !insideQuote;
+                    else if (char === ',' && !insideQuote) {
+                        result.push(entry.trim());
+                        entry = '';
+                    } else entry += char;
+                }
+                result.push(entry.trim());
+                return result;
+            };
+
+            const headers = parseRow(lines[0]);
+            const findCol = (keywords) => {
+                return headers.findIndex(h => keywords.some(k => h.toLowerCase().includes(k.toLowerCase())));
+            };
+
+            const colMap = {
+                name: findCol(['名稱', '景點', 'title', 'name']),
+                category: findCol(['分類', '類別', 'category', 'tag']),
+                rating: findCol(['評分', '分數', 'rating', 'star']),
+                image: findCol(['圖片', '照片', 'image', 'photo', 'img']),
+                area: findCol(['區域', '地區', 'area', 'district']),
+                address: findCol(['地址', '位置', 'address', 'location']),
+                reason: findCol(['推薦理由', '理由', 'reason', 'highlight', '簡介']),
+                hours: findCol(['營業時間', 'businesshours']),
+                hoursRemark: findCol(['營業備註', '時間備註']),
+                ticket: findCol(['門票資訊', '門票', '票價', 'ticket']),
+                ticketRemark: findCol(['門票優惠', '票價備註', '優惠']),
+                transport: findCol(['交通方式', '交通', 'transport']),
+                transportRemark: findCol(['交通備註']),
+                stay: findCol(['建議停留', '停留', 'stay', 'duration']),
+                stayRemark: findCol(['停留備註']),
+                website: findCol(['官網', '網站', 'website', 'link'])
+            };
+
+            const results = [];
+            for (let i = 1; i < lines.length; i++) {
+                const row = parseRow(lines[i]);
+                if (!row || row.length === 0 || !row[colMap.name]) continue;
+                const name = row[colMap.name];
+                const websiteVal = colMap.website !== -1 ? row[colMap.website] : '';
+                
+                // 官網降級處理：若無網址則自動生成 Google 搜尋連結
+                let finalWebsite = websiteVal;
+                let isSearchWebsite = false;
+                if (!finalWebsite || finalWebsite === '#' || finalWebsite.trim() === '') {
+                    finalWebsite = `https://www.google.com/search?q=${encodeURIComponent(name + ' 官網')}`;
+                    isSearchWebsite = true;
+                }
+
+                results.push({
+                    id: `csv-attraction-${i}`,
+                    name: name,
+                    category: colMap.category !== -1 ? (row[colMap.category] || '未分類') : '熱門景點',
+                    rating: colMap.rating !== -1 ? (row[colMap.rating] || '4.5') : '4.5',
+                    image: colMap.image !== -1 && row[colMap.image] ? row[colMap.image] : 'https://images.unsplash.com/photo-1542044896530-05d85be9b11a?auto=format&fit=crop&w=800&q=80',
+                    area: colMap.area !== -1 ? (row[colMap.area] || '景點區域') : '大阪市區',
+                    address: colMap.address !== -1 ? (row[colMap.address] || '詳細地址請參閱官網') : '',
+                    reason: colMap.reason !== -1 ? (row[colMap.reason] || '當地必訪熱門推薦景點！') : '當地必訪熱門推薦景點！',
+                    hours: colMap.hours !== -1 ? (row[colMap.hours] || '請見官網') : '請見官網',
+                    hoursRemark: colMap.hoursRemark !== -1 ? row[colMap.hoursRemark] : '(詳見官網)',
+                    ticket: colMap.ticket !== -1 ? (row[colMap.ticket] || '參閱官網') : '參閱官網',
+                    ticketRemark: colMap.ticketRemark !== -1 ? row[colMap.ticketRemark] : '🏷️ 可用周遊卡',
+                    transport: colMap.transport !== -1 ? (row[colMap.transport] || '鄰近電車站') : '鄰近電車站',
+                    transportRemark: colMap.transportRemark !== -1 ? row[colMap.transportRemark] : '大眾運輸直達',
+                    stay: colMap.stay !== -1 ? (row[colMap.stay] || '1-2 小時') : '1-2 小時',
+                    stayRemark: colMap.stayRemark !== -1 ? row[colMap.stayRemark] : '建議安排日間前往',
+                    website: finalWebsite,
+                    isSearchWebsite: isSearchWebsite
+                });
+            }
+            return results;
+        }
+
+        // 渲染分類篩選 Chips
+        function renderCategoryChips() {
+            const container = document.getElementById('category-chips');
+            const categories = new Set(['ALL']);
+            attractionsData.forEach(item => {
+                if (item.category) {
+                    item.category.split(',').forEach(c => categories.add(c.trim()));
+                }
+            });
+            container.innerHTML = Array.from(categories).map(cat => {
+                const label = cat === 'ALL' ? '🌟 全部分類' : cat;
+                const isSelected = currentCategory === cat;
+                const activeClass = isSelected
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100 font-bold'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium';
+                return `<button onclick="filterCategory('${cat}')" class="px-4 py-2 text-xs rounded-xl shrink-0 transition ${activeClass}">${label}</button>`;
+            }).join('');
+        }
+
+        function filterCategory(cat) {
+            currentCategory = cat;
+            renderCategoryChips();
+            renderCards();
+        }
+
+        function handleSearch() {
+            currentKeyword = document.getElementById('search-input').value.trim().toLowerCase();
+            renderCards();
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            const tabAll = document.getElementById('tab-all');
+            const tabItinerary = document.getElementById('tab-itinerary');
+            if (tab === 'all') {
+                tabAll.className = "flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition bg-white text-slate-800 shadow-sm";
+                tabItinerary.className = "flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5";
+            } else {
+                tabItinerary.className = "flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition bg-white text-slate-800 shadow-sm flex items-center justify-center gap-1.5";
+                tabAll.className = "flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900";
+            }
+            renderCards();
+        }
+
+        // 渲染 11 大元素卡片列表
+        function renderCards() {
+            // 🟢 1. 先處理時間軸的顯示與隱藏（放在最前面，防止 filtered.length === 0 的 early return 阻擋）
+            const timelineContainer = document.getElementById('timeline-container');
+            if (currentTab === 'itinerary') {
+                if (timelineContainer) {
+                    timelineContainer.classList.remove('hidden');
+                    generateDynamicTimeline(); // 即時執行 AI 區域排序並渲染
+                }
+            } else {
+                if (timelineContainer) {
+                    timelineContainer.classList.add('hidden');
+                }
+            }
+
+            const grid = document.getElementById('attraction-grid');
+            const emptyState = document.getElementById('empty-state');
+            
+            // 篩選過濾邏輯
+            const filtered = attractionsData.filter(item => {
+                // 分類過濾
+                const matchCat = currentCategory === 'ALL' || (item.category && item.category.includes(currentCategory));
+                // 關鍵字過濾
+                const matchKw = !currentKeyword ||
+                    item.name.toLowerCase().includes(currentKeyword) ||
+                    item.area.toLowerCase().includes(currentKeyword) ||
+                    item.address.toLowerCase().includes(currentKeyword);
+                // 頁籤過濾 (我的行程)
+                const matchTab = currentTab === 'all' || myItineraryIds.has(item.id);
+                return matchCat && matchKw && matchTab;
+            });
+
+            if (filtered.length === 0) {
+                grid.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+            grid.classList.remove('hidden');
+
+            grid.innerHTML = filtered.map(item => {
+                const isSelected = myItineraryIds.has(item.id);
+                
+                // 🟢 1. 判斷是否有「真正的詳細地址」（若地址與區域相同，代表試算表只有填寫『所在區域與地址』欄位）
+                const hasRealAddress = item.address && 
+                                       item.address !== item.area && 
+                                       !item.address.includes('詳見') && 
+                                       !item.address.includes('地區') &&
+                                       !item.address.includes('區域');
+
+                // 🟢 2. 有真實詳細地址就用「名稱 + 地址」；若無，就直接用「名稱 + 大阪」搜尋，100% 精準！
+                const searchQuery = hasRealAddress 
+                    ? `${item.name} ${item.address}` 
+                    : `${item.name} 大阪`;
+
+                // 🟢 3. 採用官方標準 Google 地圖 API 安全轉碼，確保中文字與特殊符號解析正確
+                const mapSearchQuery = encodeURIComponent(searchQuery.trim());
+                const mapUrl = `https://www.google.com/maps/search/?api=1&query=${mapSearchQuery}`;
+
+                // 卡片容器 Active 狀態樣式
+                const cardBorderClass = isSelected
+                    ? 'border-purple-500 ring-4 ring-purple-100 shadow-2xl'
+                    : 'border-slate-100 shadow-xl hover:-translate-y-1';
+                
+                // 主按鈕 Active 狀態樣式
+                const btnBgClass = isSelected
+                    ? 'bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 shadow-emerald-100'
+                    : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 shadow-indigo-100';
+                
+                const btnIconText = isSelected ? '✓' : '＋';
+                const btnLabelText = isSelected ? '已加入行程' : '加入我的行程';
+                
+                // 官網按鈕標籤文字
+                const websiteBtnLabel = item.isSearchWebsite ? '搜尋官網 ↗' : '前往官網 ↗';
+                
+                // 分類 Tag Array
+                const tags = item.category ? item.category.split(',').map(t => t.trim()) : ['熱門景點'];
+
+                return `
+                <div id="card-${item.id}" class="w-full bg-white rounded-[2rem] overflow-hidden border transition-all duration-300 flex flex-col justify-between ${cardBorderClass}">
+                    <div>
+                        <!-- 1. 頂部大圖區 (高 64px = h-64) 與 Scrim 遮罩 -->
+                        <div class="relative h-64 overflow-hidden bg-slate-100">
+                            <img src="${item.image}" alt="${item.name}" loading="lazy" class="w-full h-full object-cover">
+                            <!-- Scrim Overlay 漸層遮罩 -->
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                            <!-- 左上角：分類標籤群 -->
+                            <div class="absolute top-4 left-4 flex flex-wrap gap-1.5 z-10 max-w-[70%]">
+                                ${tags.map(t => `<span class="px-3 py-1 text-xs font-medium text-slate-800 bg-white/90 backdrop-blur-md rounded-full shadow-sm">${t}</span>`).join('')}
+                            </div>
+                            <!-- 右上角：Google 評分 (★ + 分數) -->
+                            <div class="absolute top-4 right-4 z-10">
+                                <div class="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white bg-black/40 backdrop-blur-md rounded-full border border-white/10 shadow-sm">
+                                    <span class="text-amber-400">★</span>
+                                    <span>${item.rating}</span>
+                                </div>
+                            </div>
+                            <!-- 底部：景點名稱 -->
+                            <div class="absolute bottom-5 left-6 right-6 z-10">
+                                <h2 class="text-2xl font-bold text-white tracking-wide drop-shadow-md">${item.name}</h2>
+                            </div>
+                        </div>
+
+                        <!-- 卡片內容區 -->
+                        <div class="p-6 space-y-4">
+                            <!-- 2. 地區與詳細地址 (玫瑰紅 Location Pin) -->
+                            <div class="flex items-start gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-rose-500 shrink-0 mt-0.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+                                </svg>
+                                <div class="text-xs sm:text-sm">
+                                    <span class="font-bold text-slate-800">${item.area}</span>
+                                    <span class="mx-1 text-slate-300">|</span>
+                                    <span class="text-slate-500">${item.address || '地址詳見官網'}</span>
+                                </div>
+                            </div>
+
+                            <!-- 3. 一句話推薦理由 -->
+                            <div class="flex items-start gap-2.5 p-3.5 bg-amber-50/70 border-l-4 border-amber-500 rounded-r-xl">
+                                <span class="text-amber-500 text-base shrink-0 mt-0.5">💡</span>
+                                <p class="text-xs sm:text-sm font-medium text-amber-900 leading-relaxed">
+                                    ${item.reason}
+                                </p>
+                            </div>
+
+                            <!-- 4. 2x2 景點事實資料表格 -->
+                            <div class="grid grid-cols-2 border border-slate-100 rounded-2xl overflow-hidden bg-slate-50/50">
+                                <!-- 營業時間 -->
+                                <div class="p-3 border-r border-b border-slate-100 flex flex-col justify-between min-h-[5.2rem]">
+                                    <span class="text-[11px] font-medium text-slate-400">營業時間</span>
+                                    <span class="text-xs sm:text-sm font-bold text-slate-700 mt-0.5 block">${item.hours}</span>
+                                    <span class="text-[10px] text-slate-400 mt-0.5 block">${item.hoursRemark || '(詳見官網)'}</span>
+                                </div>
+                                <!-- 門票資訊 (🏷️ 票券圖標) -->
+                                <div class="p-3 border-b border-slate-100 flex flex-col justify-between min-h-[5.2rem]">
+                                    <span class="text-[11px] font-medium text-slate-400">門票資訊</span>
+                                    <span class="text-xs sm:text-sm font-bold text-slate-700 mt-0.5 block">${item.ticket}</span>
+                                    <span class="text-[10px] text-emerald-600 font-medium mt-0.5 block">${item.ticketRemark || '🏷️ 可用周遊卡'}</span>
+                                </div>
+                                <!-- 交通方式 -->
+                                <div class="p-3 border-r border-slate-100 flex flex-col justify-between min-h-[5.2rem]">
+                                    <span class="text-[11px] font-medium text-slate-400">交通方式</span>
+                                    <span class="text-xs sm:text-sm font-bold text-slate-700 mt-0.5 block">${item.transport}</span>
+                                    <span class="text-[10px] text-slate-400 mt-0.5 block">${item.transportRemark || '電車直達'}</span>
+                                </div>
+                                <!-- 建議停留 -->
+                                <div class="p-3 flex flex-col justify-between min-h-[5.2rem]">
+                                    <span class="text-[11px] font-medium text-slate-400">建議停留</span>
+                                    <span class="text-xs sm:text-sm font-bold text-slate-700 mt-0.5 block">${item.stay}</span>
+                                    <span class="text-[10px] text-slate-400 mt-0.5 block">${item.stayRemark || '建議白天前往'}</span>
+                                </div>
+                            </div>
+
+                            <!-- 5. 免責聲明與官網連結 -->
+                            <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                                <span class="flex items-center gap-1">
+                                    <span>⚠️</span> 實際營業時間請以官網為準
+                                </span>
+                                <a href="${item.website}" target="_blank" rel="noopener noreferrer" class="font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-0.5">
+                                    ${websiteBtnLabel}
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6. 按鈕操作區 -->
+                    <div class="p-6 pt-0 space-y-2.5">
+                        <!-- 主按鈕：加入行程 (獨立 span 保護文字與圖標) -->
+                        <button id="btn-toggle-${item.id}" onclick="toggleItinerary('${item.id}', '${item.name}')"
+                        class="w-full py-3.5 px-6 text-xs sm:text-sm font-bold text-white rounded-2xl shadow-lg transition-all duration-300 flex items-center justify-center gap-2 ${btnBgClass}">
+                            <span id="btn-icon-${item.id}" class="text-base font-normal">${btnIconText}</span>
+                            <span id="btn-text-${item.id}">${btnLabelText}</span>
+                        </button>
+                        <!-- 副按鈕：開啟 Google 地圖 (使用原生純 HTML 連結，避免 JS 攔截問題) -->
+                        <a href="${mapUrl}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="w-full py-3 px-6 text-xs sm:text-sm font-bold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl transition-all duration-200 flex items-center justify-center gap-2">
+                            <!-- 地圖圖標 (text-rose-500) -->
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-rose-500 shrink-0">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.446 1.102-.276a1.5 1.5 0 0 0 1.114-1.45V5.182a1.5 1.5 0 0 0-1.89-1.44l-3.32.83a1.5 1.5 0 0 1-1.014 0l-3.32-.83a1.5 1.5 0 0 0-1.89 1.44v13.344c0 .65.414 1.218 1.015 1.368l1.713.428m11.386-.179a1.5 1.5 0 0 0 .114-.84V5.14c0-.65-.414-1.218-1.015-1.368L15 3.375M2.103 4.892 12 3m0 18-9.897-1.892A1.5 1.5 0 0 1 1 17.658V5.18a1.5 1.5 0 0 1 1.103-1.45L12 1.875" />
+                            </svg>
+                            <span>開啟 Google 地圖出發</span>
+                        </a>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // 雙向 Toggle 加入/移除行程功能 (不破壞整顆按鈕 DOM)
+        function toggleItinerary(id, name) {
+            const card = document.getElementById(`card-${id}`);
+            const btn = document.getElementById(`btn-toggle-${id}`);
+            const btnIcon = document.getElementById(`btn-icon-${id}`);
+            const btnText = document.getElementById(`btn-text-${id}`);
+
+            if (myItineraryIds.has(id)) {
+                // 從行程移除
+                myItineraryIds.delete(id);
+                if (card) {
+                    card.classList.remove('border-purple-500', 'ring-4', 'ring-purple-100', 'shadow-2xl');
+                    card.classList.add('border-slate-100', 'shadow-xl');
+                }
+                if (btn) {
+                    btn.classList.remove('bg-emerald-500', 'hover:bg-emerald-600', 'active:bg-emerald-700', 'shadow-emerald-100');
+                    btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700', 'active:bg-indigo-800', 'shadow-indigo-100');
+                }
+                if (btnIcon) btnIcon.textContent = '＋';
+                if (btnText) btnText.textContent = '加入我的行程';
+                showToast(`已從行程中移除「${name}」`, false);
+            } else {
+                // 加入行程
+                myItineraryIds.add(id);
+                if (card) {
+                    card.classList.remove('border-slate-100', 'shadow-xl');
+                    card.classList.add('border-purple-500', 'ring-4', 'ring-purple-100', 'shadow-2xl');
+                }
+                if (btn) {
+                    btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700', 'active:bg-indigo-800', 'shadow-indigo-100');
+                    btn.classList.add('bg-emerald-500', 'hover:bg-emerald-600', 'active:bg-emerald-700', 'shadow-emerald-100');
+                }
+                if (btnIcon) btnIcon.textContent = '✓';
+                if (btnText) btnText.textContent = '已加入行程';
+                showToast(`已成功將「${name}」加入行程！`, true);
+            }
+            saveItinerary();
+
+            // 若在「我的行程」頁籤下取消勾選，則重新渲染卡片
+            if (currentTab === 'itinerary') {
+                renderCards();
+            }
+        }
+
+        // 更新計數器 Badge
+        function updateCounts() {
+            document.getElementById('count-all').textContent = attractionsData.length;
+            document.getElementById('count-itinerary').textContent = myItineraryIds.size;
+        }
+
+        // Toast 動態通知
+        let toastTimeout;
+        function showToast(msg, isAdd = true) {
+            const toast = document.getElementById('toast');
+            const toastIcon = document.getElementById('toast-icon');
+            const toastMsg = document.getElementById('toast-message');
+            toastIcon.textContent = isAdd ? '🎉' : '🗑️';
+            toastMsg.textContent = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+                toast.classList.remove('translate-y-0', 'opacity-100');
+            }, 2800);
+        }
+
+        // 匯出行程 Modal
+        function openExportModal() {
+            const modal = document.getElementById('export-modal');
+            const tableBody = document.getElementById('export-table-body');
+            const textarea = document.getElementById('export-textarea');
+            const selectedList = attractionsData.filter(item => myItineraryIds.has(item.id));
+            
+            if (selectedList.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">目前尚未選取任何景點行程</td></tr>`;
+                textarea.value = "尚未選取景點行程。";
+            } else {
+                // 渲染 HTML 表格
+                tableBody.innerHTML = selectedList.map(item => `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-3 font-bold text-slate-800">${item.name}</td>
+                        <td class="p-3">${item.area}</td>
+                        <td class="p-3">${item.stay}</td>
+                        <td class="p-3">${item.ticket}</td>
+                        <td class="p-3">${item.hours}</td>
+                    </tr>
+                `).join('');
+
+                // 產生 Markdown 表格格式純文字
+                let mdText = `| 景點名稱 | 地區 | 建議停留 | 門票 | 營業時間 |\n`;
+                mdText += `| --- | --- | --- | --- | --- |\n`;
+                selectedList.forEach(item => {
+                    mdText += `| ${item.name} | ${item.area} | ${item.stay} | ${item.ticket} | ${item.hours} |\n`;
+                });
+                textarea.value = mdText;
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeExportModal() {
+            document.getElementById('export-modal').classList.add('hidden');
+        }
+
+        function copyExportText() {
+            const textarea = document.getElementById('export-textarea');
+            textarea.select();
+            document.execCommand('copy');
+            showToast('已成功複製表格 Markdown 文字！', true);
+        }
+
+        // Google OAuth 登入回呼處理
+        function handleCredentialResponse(response) {
+            try {
+                // 解析 JWT Payload
+                const base64Url = response.credential.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+                const user = JSON.parse(jsonPayload);
+                
+                // 更新 UI 顯示頭像
+                const profileDiv = document.getElementById('user-profile');
+                profileDiv.innerHTML = `
+                    <div class="flex items-center gap-2 bg-slate-100 p-1 pr-3 rounded-full">
+                        <img src="${user.picture}" alt="${user.name}" class="w-7 h-7 rounded-full">
+                        <span class="text-xs font-bold text-slate-700">${user.name}</span>
+                    </div>
+                `;
+                showToast(`歡迎回來，${user.name}！`, true);
+            } catch (e) {
+                console.error("Google Auth error:", e);
+            }
+        }
+
+        /**
+         * 旅圖知情所 - 區域聚合行程排序演算法 (防崩潰安全版)
+         * 功能：將使用者選取的景點自動依區域分組，生成合理的垂直時間軸行程表
+         */
+        function generateDynamicTimeline() {
+            const timelineContainer = document.getElementById('timeline-container');
+            if (!timelineContainer) return;
+
+            // 1. 取得使用者目前勾選的景點資料
+            const selectedAttractions = attractionsData.filter(item => myItineraryIds.has(item.id));
+
+            // 如果行程是空的，優雅呈現提示
+            if (selectedAttractions.length === 0) {
+                timelineContainer.innerHTML = `
+                    <div class="py-12 text-center text-slate-400">
+                        <p class="text-3xl">🧭</p>
+                        <p class="text-sm font-bold mt-2">您的行程目前是空的</p>
+                        <p class="text-xs mt-1 text-slate-400">請先在上方卡片點擊「＋ 加入我的行程」吧！</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // 2. 核心演算法：依據「所在區域」進行自動分組 (Clustering)
+            const groupedByArea = {};
+            selectedAttractions.forEach(item => {
+                // 安全清理區域字串，相容全形與半形括號（例如將 "難波・心齋橋（中央區）" 簡化為 "難波・心齋橋"）
+                let areaKey = item.area || '其他區域';
+                if (areaKey.includes('（')) {
+                    areaKey = areaKey.split('（')[0];
+                } else if (areaKey.includes('(')) {
+                    areaKey = areaKey.split('(')[0];
+                }
+                areaKey = areaKey.trim();
+
+                if (!groupedByArea[areaKey]) {
+                    groupedByArea[areaKey] = [];
+                }
+                groupedByArea[areaKey].push(item);
+            });
+
+            // 3. 開始動態編譯時間軸 HTML
+            let timelineHTML = `
+                <div class="max-w-3xl mx-auto space-y-8 px-4">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+                        <h3 class="text-lg font-black text-slate-800 flex items-center gap-2">
+                            <span>✨</span> AI 智能動線優化行程表
+                        </h3>
+                        <span class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full font-bold">
+                            共 ${selectedAttractions.length} 個景點 · 聚合為 ${Object.keys(groupedByArea).length} 個主要區域
+                        </span>
+                    </div>
+                    
+                    <div class="relative border-l-2 border-indigo-100 ml-4 pl-6 space-y-8">
+            `;
+
+            let dayCounter = 1;
+            
+            // 4. 遍歷每個區域分組（每個區域代表一個高效的一日或半日行程區塊，防止跳來跳去）
+            for (const [area, attractions] of Object.entries(groupedByArea)) {
+                timelineHTML += `
+                    <!-- 區域分組標題 -->
+                    <div class="relative">
+                        <div class="absolute -left-[2.15rem] top-0.5 w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-md shadow-indigo-100">
+                            ${dayCounter}
+                        </div>
+                        <div class="bg-indigo-50 text-indigo-800 px-4 py-1.5 rounded-xl inline-block text-xs font-bold mb-2 shadow-sm">
+                            📍 今日聚焦區域：${area}（同區同玩，車程最省！）
+                        </div>
+                    </div>
+                `;
+
+                // 5. 輸出同區域內的景點清單
+                attractions.forEach((item, index) => {
+                    const isLastInArea = index === attractions.length - 1;
+                    
+                    // 依據 index 自動分配上午/下午/晚上的視覺時段標記
+                    let periodBadge = '☀️ 上午';
+                    if (index === 1) periodBadge = '🌤️ 下午';
+                    if (index >= 2) periodBadge = '🌙 晚上';
+
+                    // 根據分類動態給予精美圖示
+                    let categoryIcon = '🛍️';
+                    if (item.category) {
+                        if (item.category.includes('主題樂園')) categoryIcon = '🎢';
+                        else if (item.category.includes('歷史') || item.category.includes('文化')) categoryIcon = '⛩️';
+                        else if (item.category.includes('自然') || item.category.includes('公園')) categoryIcon = '🌳';
+                        else if (item.category.includes('美食')) categoryIcon = '🍜';
+                        else if (item.category.includes('地標')) categoryIcon = '📍';
+                    }
+
+                    timelineHTML += `
+                        <!-- 景點時間軸卡片 -->
+                        <div class="relative bg-white rounded-2xl border border-slate-100 p-5 shadow-sm hover:shadow-md transition duration-300">
+                            <div class="flex justify-between items-start gap-4">
+                                <div>
+                                    <span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">${periodBadge}</span>
+                                    <h4 class="text-base font-bold text-slate-800 mt-1.5">${item.name}</h4>
+                                    <p class="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                        <span>🚶 建議停留：</span>
+                                        <span class="font-bold text-indigo-600">${item.stay || '1.5 - 2 小時'}</span>
+                                    </p>
+                                </div>
+                                <span class="text-2xl">${categoryIcon}</span>
+                            </div>
+                            
+                            <p class="text-xs text-slate-600 leading-relaxed mt-3 border-t border-slate-50 pt-3">
+                                💡 <strong>推薦玩法：</strong>${item.reason || '當地必訪熱門推薦景點！'}
+                            </p>
+                        </div>
+                    `;
+
+                    // 6. 渲染交通銜接動線
+                    if (!isLastInArea) {
+                        timelineHTML += `
+                            <!-- 交通銜接資訊 -->
+                            <div class="my-3 pl-4 flex items-center gap-2 text-xs text-slate-500 font-medium">
+                                <span class="text-indigo-400">⬇️</span>
+                                <div class="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                                    <span>🚌 交通建議：</span>
+                                    <span class="text-slate-700 font-semibold">${item.transport || '步行或大眾運輸'}</span>
+                                    <span class="text-[10px] text-slate-400">(${item.transportRemark || '步行或電車即可直達'})</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+
+                dayCounter++;
+            }
+
+            timelineHTML += `
+                    </div>
+                    <!-- 行程終點 -->
+                    <div class="relative pl-6">
+                        <div class="absolute -left-[2.15rem] top-1 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold shadow-md">
+                            ✓
+                        </div>
+                        <div class="bg-emerald-50 text-emerald-800 px-4 py-1.5 rounded-xl inline-block text-xs font-bold shadow-sm">
+                            ✈️ 行程完美結束，準備前往機場搭機返台！
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            timelineContainer.innerHTML = timelineHTML;
+        }
+    </script>
+</body>
+</html>
