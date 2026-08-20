@@ -455,6 +455,18 @@
             return `${match[1]} ${match[2]}`;
         }
 
+        // ✈️ 機位配置圖連結（AeroLOPA）：這個網站沒有公開 API、也沒有「航班+日期」查詢用的網址參數
+        // （已實測確認——輸入航班號碼是前端 JS 互動流程，不會產生可分享的查詢結果網址），
+        // 但每家航空公司都有一個固定格式的靜態頁面：aerolopa.com/{兩碼航空公司代碼}，
+        // 例如中華航空(CI) → aerolopa.com/ci，會列出該航空公司全部機隊的座位配置圖。
+        // 從航班號碼開頭抓出航空公司代碼，直接帶使用者跳到那家航空公司的頁面，比讓他自己重新搜尋省一步，
+        // 但沒辦法自動篩到「這一趟班機用哪一台」，這點沒辦法克服（那個對應關係本身也是要花錢買的資料）。
+        function getAerolopaUrl(flightNumber) {
+            const match = (flightNumber || '').replace(/\s+/g, '').match(/^[A-Za-z]+/);
+            if (!match) return null;
+            return `https://www.aerolopa.com/${match[0].toLowerCase()}`;
+        }
+
         // 🛡️ 防呆：回程日期不能早於去程日期、去程日期不能晚於回程日期
         // 順便把航班號碼輸入框的提示文字換成「去程航班號碼」/「回程航班號碼」，讓使用者一眼就知道
         // 現在填的是哪一段航班，不用再回頭看上面選了哪顆單選鈕
@@ -589,7 +601,13 @@
                         currentArrivalQueryDate = flightDate;
                         updateFlightDateConstraints();
 
-                        statusEl.textContent = `✅ 已查到去程 ${currentArrivalFlight.number}，抵達 ${airport}：${time}（將加到行程開頭）`;
+                        {
+                            const seatMapUrl = getAerolopaUrl(currentArrivalFlight.number);
+                            const seatMapLink = seatMapUrl
+                                ? ` <a href="${escapeHtml(seatMapUrl)}" target="_blank" rel="noopener noreferrer" class="underline hover:no-underline font-bold">🔍 查看去程機位配置圖</a>`
+                                : '';
+                            statusEl.innerHTML = `✅ 已查到去程 ${escapeHtml(currentArrivalFlight.number)}，抵達 ${escapeHtml(airport)}：${escapeHtml(time)}（將加到行程開頭）${seatMapLink}`;
+                        }
                         statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
                         showToast('去程航班已加入行程開頭！', true);
                         fetchOsakaWeather(); // 🌤️ 旅遊日期確定了，自動查大阪天氣
@@ -614,7 +632,13 @@
                         currentDepartureQueryDate = flightDate;
                         updateFlightDateConstraints();
 
-                        statusEl.textContent = `✅ 已查到回程 ${currentDepartureFlight.number}，${airport} 起飛：${time}（將加到行程結尾）`;
+                        {
+                            const seatMapUrl = getAerolopaUrl(currentDepartureFlight.number);
+                            const seatMapLink = seatMapUrl
+                                ? ` <a href="${escapeHtml(seatMapUrl)}" target="_blank" rel="noopener noreferrer" class="underline hover:no-underline font-bold">🔍 查看回程機位配置圖</a>`
+                                : '';
+                            statusEl.innerHTML = `✅ 已查到回程 ${escapeHtml(currentDepartureFlight.number)}，${escapeHtml(airport)} 起飛：${escapeHtml(time)}（將加到行程結尾）${seatMapLink}`;
+                        }
                         statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
                         showToast('回程航班已加入行程結尾！', true);
                     } else {
@@ -2365,6 +2389,10 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                 const warnBlock = currentArrivalFlight.isOsakaAirport === false
                     ? `<div class="text-[11px] text-amber-600 font-bold mt-2">⚠️ 這不是大阪的機場，請回上方確認航班號碼/日期/方向是否選對</div>`
                     : '';
+                const arrivalSeatMapUrl = getAerolopaUrl(currentArrivalFlight.number);
+                const arrivalSeatMapLink = arrivalSeatMapUrl
+                    ? `<a href="${escapeHtml(arrivalSeatMapUrl)}" target="_blank" rel="noopener noreferrer" class="text-[11px] font-bold text-[#5c7a8a] underline hover:no-underline mt-2 inline-block">🔍 查看去程機位配置圖</a>`
+                    : '';
                 timelineHTML += `
                     <!-- 航班抵達卡片 -->
                     <div class="bg-[#eef3f5] border border-[#dde7ea] rounded-2xl p-4">
@@ -2372,6 +2400,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                         <div class="text-sm font-bold text-slate-800">${escapeHtml(currentArrivalFlight.airport)}｜${escapeHtml(currentArrivalFlight.time)}（日本當地時間）</div>
                         <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentArrivalFlight.model)}（時間僅供參考，請以航空公司公告為準）</div>
                         ${warnBlock}
+                        ${arrivalSeatMapLink}
                     </div>
                 `;
             }
@@ -2464,6 +2493,10 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             }
 
             // ✈️ 若有查到「回程」航班資訊，用實際資料取代通用結尾文字
+            const departureSeatMapUrl = currentDepartureFlight ? getAerolopaUrl(currentDepartureFlight.number) : null;
+            const departureSeatMapLink = departureSeatMapUrl
+                ? `<a href="${escapeHtml(departureSeatMapUrl)}" target="_blank" rel="noopener noreferrer" class="text-[11px] font-bold text-[#5c7a8a] underline hover:no-underline mt-2 inline-block">🔍 查看回程機位配置圖</a>`
+                : '';
             const endingBlock = currentDepartureFlight
                 ? `
                     <div class="bg-[#eef3f5] border border-[#dde7ea] rounded-2xl p-4">
@@ -2471,6 +2504,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                         <div class="text-sm font-bold text-slate-800">${escapeHtml(currentDepartureFlight.airport)}｜${escapeHtml(currentDepartureFlight.time)}（日本當地時間）</div>
                         <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentDepartureFlight.model)}（時間僅供參考，記得提早2-3小時抵達機場）</div>
                         ${currentDepartureFlight.isOsakaAirport === false ? `<div class="text-[11px] text-amber-600 font-bold mt-2">⚠️ 這不是大阪的機場，請回上方確認航班號碼/日期/方向是否選對</div>` : ''}
+                        ${departureSeatMapLink}
                     </div>
                 `
                 : `
