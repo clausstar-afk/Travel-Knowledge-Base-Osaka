@@ -490,18 +490,10 @@
             const statusEl = document.getElementById('flight-lookup-status');
             const parts = [];
             if (currentArrivalFlight) {
-                const seatMapUrl = getAerolopaUrl(currentArrivalFlight.number);
-                const seatMapLink = seatMapUrl
-                    ? ` <a href="${escapeHtml(seatMapUrl)}" target="_blank" rel="noopener noreferrer" class="underline hover:no-underline font-bold">🔍 查看去程機位配置圖</a>`
-                    : '';
-                parts.push(`🛬 去程 ${escapeHtml(currentArrivalFlight.number)}，抵達 ${escapeHtml(currentArrivalFlight.airport)}：${escapeHtml(currentArrivalFlight.time)}${seatMapLink}`);
+                parts.push(`🛬 去程 ${escapeHtml(currentArrivalFlight.number)}，抵達 ${escapeHtml(currentArrivalFlight.airport)}：${escapeHtml(currentArrivalFlight.time)}`);
             }
             if (currentDepartureFlight) {
-                const seatMapUrl = getAerolopaUrl(currentDepartureFlight.number);
-                const seatMapLink = seatMapUrl
-                    ? ` <a href="${escapeHtml(seatMapUrl)}" target="_blank" rel="noopener noreferrer" class="underline hover:no-underline font-bold">🔍 查看回程機位配置圖</a>`
-                    : '';
-                parts.push(`🛫 回程 ${escapeHtml(currentDepartureFlight.number)}，${escapeHtml(currentDepartureFlight.airport)} 起飛：${escapeHtml(currentDepartureFlight.time)}${seatMapLink}`);
+                parts.push(`🛫 回程 ${escapeHtml(currentDepartureFlight.number)}，${escapeHtml(currentDepartureFlight.airport)} 起飛：${escapeHtml(currentDepartureFlight.time)}`);
             }
             statusEl.innerHTML = `✅ 已還原之前查過的航班資訊<br>${parts.join('<br>')}`;
             statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
@@ -625,13 +617,9 @@
                         updateFlightDateConstraints();
                         saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
 
-                        {
-                            const seatMapUrl = getAerolopaUrl(currentArrivalFlight.number);
-                            const seatMapLink = seatMapUrl
-                                ? ` <a href="${escapeHtml(seatMapUrl)}" target="_blank" rel="noopener noreferrer" class="underline hover:no-underline font-bold">🔍 查看去程機位配置圖</a>`
-                                : '';
-                            statusEl.innerHTML = `✅ 已查到去程 ${escapeHtml(currentArrivalFlight.number)}，抵達 ${escapeHtml(airport)}：${escapeHtml(time)}（將加到行程開頭）${seatMapLink}`;
-                        }
+                        // 機位配置圖連結只在「我的行程」時間軸卡片顯示（那裡有機型資訊可以對照），
+                        // 這裡的查詢狀態訊息不重複放連結，避免使用者不知道機型就點進去
+                        statusEl.textContent = `✅ 已查到去程 ${currentArrivalFlight.number}，抵達 ${airport}：${time}（將加到行程開頭）`;
                         statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
                         showToast('去程航班已加入行程開頭！', true);
                         fetchOsakaWeather(); // 🌤️ 旅遊日期確定了，自動查大阪天氣
@@ -657,13 +645,7 @@
                         updateFlightDateConstraints();
                         saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
 
-                        {
-                            const seatMapUrl = getAerolopaUrl(currentDepartureFlight.number);
-                            const seatMapLink = seatMapUrl
-                                ? ` <a href="${escapeHtml(seatMapUrl)}" target="_blank" rel="noopener noreferrer" class="underline hover:no-underline font-bold">🔍 查看回程機位配置圖</a>`
-                                : '';
-                            statusEl.innerHTML = `✅ 已查到回程 ${escapeHtml(currentDepartureFlight.number)}，${escapeHtml(airport)} 起飛：${escapeHtml(time)}（將加到行程結尾）${seatMapLink}`;
-                        }
+                        statusEl.textContent = `✅ 已查到回程 ${currentDepartureFlight.number}，${airport} 起飛：${time}（將加到行程結尾）`;
                         statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
                         showToast('回程航班已加入行程結尾！', true);
                     } else {
