@@ -575,8 +575,10 @@
                 box.classList.remove('hidden');
                 return;
             }
+            // select-none：手機上直接點文字，瀏覽器有時候會先觸發「選取文字反白」而不是點擊，
+            // 導致 onmousedown 選不到值，畫面卻沒有任何提示，使用者只會覺得「點了沒反應」
             box.innerHTML = numbers.map(n => `
-                <div class="px-4 py-2 text-sm text-[#2a3e4a] cursor-pointer hover:bg-[#eef3f5] border-b border-[#e8dcc8] last:border-b-0"
+                <div class="px-4 py-2 text-sm text-[#2a3e4a] cursor-pointer select-none hover:bg-[#eef3f5] border-b border-[#e8dcc8] last:border-b-0"
                     onmousedown="selectFlightNumberSuggestion('${escapeJsAttr(n)}')">${escapeHtml(n)}</div>
             `).join('');
             box.classList.remove('hidden');
