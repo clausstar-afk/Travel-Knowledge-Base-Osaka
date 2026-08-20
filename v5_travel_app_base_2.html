@@ -652,17 +652,20 @@
             const chars = [...originalText]; // 用展開運算子正確處理多位元組字元（例如未來標題裡有 emoji）
             if (chars.length < 2) return; // 少於 2 個字沒辦法「之間」加空格，維持原樣就好
 
-            // 先還原成單純文字量測「原本自然寬度」，避免舊的 flex 佈局干擾這次量測結果
+            // 還原成單純文字，避免舊的 flex 佈局干擾這次的副標寬度量測
             titleEl.removeAttribute('style');
             titleEl.textContent = originalText;
-            const naturalTitleWidth = titleEl.getBoundingClientRect().width;
             const targetWidth = subtitleEl.getBoundingClientRect().width;
 
-            // 只有「中文標題比英文副標窄」時才需要撐開對齊；如果之後文案改了、標題反而比副標寬，
-            // 就維持原本樣子，避免硬撐反而把文字擠壓變形
-            if (naturalTitleWidth >= targetWidth) return;
+            // ⚠️ 這裡原本有一個「標題自然寬度 ≥ 副標寬度就整個跳過對齊」的防呆，結果太保守——
+            // 中文粗體字在多數字型下，量出來的自然寬度本來就很容易剛好跟英文副標差不多寬，
+            // 導致這個防呆常常誤判、直接跳過對齊，變成完全沒效果。
+            // 改成永遠都套用 flex + space-between：如果標題真的比副標寬到撐不下，
+            // 每個字仍然維持自己原本的寬度、不會被壓縮變形，最多就是整行看起來比副標略寬一點，
+            // 不會有「文字被擠壓扭曲」的副作用，比「整個放棄對齊」的結果好上很多。
 
-            titleEl.innerHTML = chars.map(ch => `<span>${ch}</span>`).join('');
+            // flex-shrink:0 確保萬一字數多、空間不夠時，是「整行變寬」而不是「每個字被壓扁」
+            titleEl.innerHTML = chars.map(ch => `<span style="flex-shrink:0">${ch}</span>`).join('');
             titleEl.style.display = 'flex';
             titleEl.style.justifyContent = 'space-between';
             titleEl.style.width = `${targetWidth}px`;
