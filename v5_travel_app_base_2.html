@@ -127,7 +127,9 @@
             </div>
             <div class="flex flex-col sm:flex-row gap-2">
                 <input type="text" id="flight-number-input" placeholder="去程航班號碼，例如 CI173"
+                    list="flight-number-suggestions" autocomplete="off" oninput="onFlightNumberInput()"
                     class="flex-1 px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                <datalist id="flight-number-suggestions"></datalist>
                 <input type="date" id="flight-date-input"
                     class="px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
                 <button onclick="lookupFlight()" id="flight-lookup-btn"
@@ -499,6 +501,43 @@
             statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
         }
 
+        // ⌨️ 航班號碼自動完成建議：打字打到一半（至少 2 碼）就去問 AeroDataBox「這開頭有哪些航班號」，
+        // 用瀏覽器原生 <datalist> 顯示建議清單，避免手打漏字/打錯格式導致查詢失敗。
+        // 用 debounce（停止打字 400ms 後才發request）＋ 快取查過的關鍵字，減少 API 用量（免費額度有限）。
+        let flightNumberSuggestTimer = null;
+        const flightNumberSuggestCache = {};
+        function onFlightNumberInput() {
+            clearTimeout(flightNumberSuggestTimer);
+            const query = document.getElementById('flight-number-input').value.trim();
+            if (query.length < 2) return;
+            flightNumberSuggestTimer = setTimeout(() => fetchFlightNumberSuggestions(query), 400);
+        }
+        async function fetchFlightNumberSuggestions(query) {
+            const datalist = document.getElementById('flight-number-suggestions');
+            const cacheKey = query.toUpperCase();
+            if (flightNumberSuggestCache[cacheKey]) {
+                renderFlightNumberSuggestions(flightNumberSuggestCache[cacheKey]);
+                return;
+            }
+            try {
+                const url = `https://aerodatabox.p.rapidapi.com/flights/search/term?q=${encodeURIComponent(query)}`;
+                const res = await fetch(url, {
+                    headers: { 'x-rapidapi-host': 'aerodatabox.p.rapidapi.com', 'x-rapidapi-key': AERODATABOX_KEY }
+                });
+                if (!res.ok) return; // 建議清單查不到就靜默略過，不影響原本手動輸入查詢的功能
+                const data = await res.json();
+                const numbers = Array.isArray(data.items) ? data.items.map(item => item.number).filter(Boolean) : [];
+                flightNumberSuggestCache[cacheKey] = numbers;
+                renderFlightNumberSuggestions(numbers);
+            } catch (e) {
+                console.error('航班號碼建議查詢失敗:', e);
+            }
+        }
+        function renderFlightNumberSuggestions(numbers) {
+            const datalist = document.getElementById('flight-number-suggestions');
+            datalist.innerHTML = numbers.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+        }
+
         // ✈️ 查詢航班資訊：依「去程/回程」選擇，分別存入 currentArrivalFlight 或 currentDepartureFlight
         // 🌤️ 大阪天氣：查到去程航班、確定抵達日期後自動呼叫，免費、不用金鑰的 Open-Meteo API
         // 一般天氣預報最多只能預測未來 16 天，抓不到（旅遊日期太遠）就靜默略過，不顯示錯誤訊息干擾使用者
@@ -585,7 +624,7 @@
 
             try {
                 // ✅ 網址格式已依RapidAPI官方Code Snippets核對確認一致
-                const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNo)}/${flightDate}?withAircraftImage=false&withLocation=false&withFlightPlan=false&dateLocalRole=Both`;
+                const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNo)}/${flightDate}?withAircraftImage=true&withLocation=false&withFlightPlan=false&dateLocalRole=Both`;
                 const res = await fetch(url, {
                     headers: {
                         'Content-Type': 'application/json',
@@ -601,6 +640,13 @@
                 if (!flight) throw new Error('查無此航班資料');
 
                 const model = flight.aircraft?.model || '機型未提供';
+                // 📷 飛機實拍照片（Flickr 社群貢獻，非官方、也不保證是這一趟航班本人本機），
+                // 只擷取渲染需要用到的欄位，author/title 之後要顯示照片來源（CC BY-SA 授權要求標示出處）
+                const aircraftImage = flight.aircraft?.image?.url ? {
+                    url: flight.aircraft.image.url,
+                    author: flight.aircraft.image.author || '未知作者',
+                    webUrl: flight.aircraft.image.webUrl || ''
+                } : null;
 
                 if (flightType === 'arrival') {
                     // 🛬 去程：使用者關心「幾點降落大阪」，取 arrival 欄位
@@ -612,7 +658,7 @@
                     if (isOsakaAirport) {
                         // ✅ 只有確認抵達的是大阪機場，才把這班機當作行程的「去程」寫入狀態，
                         // 否則像 Day 1 出發時間、時間軸開頭卡片這些都會被完全不相干的錯誤航班資料污染
-                        currentArrivalFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport };
+                        currentArrivalFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport, image: aircraftImage };
                         currentArrivalQueryDate = flightDate;
                         updateFlightDateConstraints();
                         saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
@@ -640,7 +686,7 @@
 
                     if (isOsakaAirport) {
                         // ✅ 只有確認出發地是大阪機場，才把這班機當作行程的「回程」寫入狀態，避免污染行程結尾資訊
-                        currentDepartureFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport };
+                        currentDepartureFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport, image: aircraftImage };
                         currentDepartureQueryDate = flightDate;
                         updateFlightDateConstraints();
                         saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
@@ -2449,6 +2495,11 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                         <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentArrivalFlight.model)}（時間僅供參考，請以航空公司公告為準）</div>
                         ${warnBlock}
                         ${arrivalSeatMapLink}
+                        ${currentArrivalFlight.image ? `
+                        <div class="mt-2">
+                            <img src="${escapeHtml(currentArrivalFlight.image.url)}" alt="機型參考照片" class="w-full max-h-40 object-cover rounded-xl border border-[#dde7ea]" loading="lazy">
+                            <div class="text-[10px] text-slate-400 mt-1">📷 機型參考照片，非本班機實際拍攝／來源：${escapeHtml(currentArrivalFlight.image.author)}（Flickr, CC BY-SA）</div>
+                        </div>` : ''}
                     </div>
                 `;
             }
@@ -2553,6 +2604,11 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                         <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentDepartureFlight.model)}（時間僅供參考，記得提早2-3小時抵達機場）</div>
                         ${currentDepartureFlight.isOsakaAirport === false ? `<div class="text-[11px] text-amber-600 font-bold mt-2">⚠️ 這不是大阪的機場，請回上方確認航班號碼/日期/方向是否選對</div>` : ''}
                         ${departureSeatMapLink}
+                        ${currentDepartureFlight.image ? `
+                        <div class="mt-2">
+                            <img src="${escapeHtml(currentDepartureFlight.image.url)}" alt="機型參考照片" class="w-full max-h-40 object-cover rounded-xl border border-[#dde7ea]" loading="lazy">
+                            <div class="text-[10px] text-slate-400 mt-1">📷 機型參考照片，非本班機實際拍攝／來源：${escapeHtml(currentDepartureFlight.image.author)}（Flickr, CC BY-SA）</div>
+                        </div>` : ''}
                     </div>
                 `
                 : `
