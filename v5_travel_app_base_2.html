@@ -484,6 +484,29 @@
             }
         }
 
+        // 重新整理後若有還原到之前查詢過的航班，把狀態訊息跟輸入框補回去，讓使用者知道資料還在
+        function restoreFlightStatusDisplay() {
+            if (!currentArrivalFlight && !currentDepartureFlight) return;
+            const statusEl = document.getElementById('flight-lookup-status');
+            const parts = [];
+            if (currentArrivalFlight) {
+                const seatMapUrl = getAerolopaUrl(currentArrivalFlight.number);
+                const seatMapLink = seatMapUrl
+                    ? ` <a href="${escapeHtml(seatMapUrl)}" target="_blank" rel="noopener noreferrer" class="underline hover:no-underline font-bold">🔍 查看去程機位配置圖</a>`
+                    : '';
+                parts.push(`🛬 去程 ${escapeHtml(currentArrivalFlight.number)}，抵達 ${escapeHtml(currentArrivalFlight.airport)}：${escapeHtml(currentArrivalFlight.time)}${seatMapLink}`);
+            }
+            if (currentDepartureFlight) {
+                const seatMapUrl = getAerolopaUrl(currentDepartureFlight.number);
+                const seatMapLink = seatMapUrl
+                    ? ` <a href="${escapeHtml(seatMapUrl)}" target="_blank" rel="noopener noreferrer" class="underline hover:no-underline font-bold">🔍 查看回程機位配置圖</a>`
+                    : '';
+                parts.push(`🛫 回程 ${escapeHtml(currentDepartureFlight.number)}，${escapeHtml(currentDepartureFlight.airport)} 起飛：${escapeHtml(currentDepartureFlight.time)}${seatMapLink}`);
+            }
+            statusEl.innerHTML = `✅ 已還原之前查過的航班資訊<br>${parts.join('<br>')}`;
+            statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
+        }
+
         // ✈️ 查詢航班資訊：依「去程/回程」選擇，分別存入 currentArrivalFlight 或 currentDepartureFlight
         // 🌤️ 大阪天氣：查到去程航班、確定抵達日期後自動呼叫，免費、不用金鑰的 Open-Meteo API
         // 一般天氣預報最多只能預測未來 16 天，抓不到（旅遊日期太遠）就靜默略過，不顯示錯誤訊息干擾使用者
@@ -600,6 +623,7 @@
                         currentArrivalFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport };
                         currentArrivalQueryDate = flightDate;
                         updateFlightDateConstraints();
+                        saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
 
                         {
                             const seatMapUrl = getAerolopaUrl(currentArrivalFlight.number);
@@ -631,6 +655,7 @@
                         currentDepartureFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport };
                         currentDepartureQueryDate = flightDate;
                         updateFlightDateConstraints();
+                        saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
 
                         {
                             const seatMapUrl = getAerolopaUrl(currentDepartureFlight.number);
@@ -700,6 +725,13 @@
             loadSavedItinerary();
             loadDayPlan();
             loadChecklistState();
+            loadFlightInfo(); // ✈️ 還原之前查詢過的航班資訊，避免重新整理後航班卡片憑空消失
+            updateFlightDateConstraints();
+            restoreFlightStatusDisplay();
+            if (currentArrivalFlight || currentDepartureFlight) {
+                fetchOsakaWeather(); // 天氣/日落沒有存起來，還原航班後順便重新查一次
+                fetchSunsetTimes();
+            }
             await fetchAttractionsData(); // 要先等景點資料載入完成，分享連結匯入時才能對照出真正存在的景點 id
             restoreUserSession();
             checkForSharedItinerary(); // 🔗 如果網址帶著分享連結參數，詢問是否要匯入
@@ -784,6 +816,40 @@
                 localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes }));
             } catch (e) {
                 console.error("LocalStorage save error (dayplan):", e);
+            }
+        }
+
+        // 讀取 LocalStorage 保留的「已查詢航班」資訊（去程/回程），避免重新整理後航班卡片憑空消失
+        function loadFlightInfo() {
+            currentArrivalFlight = null;
+            currentDepartureFlight = null;
+            currentArrivalQueryDate = null;
+            currentDepartureQueryDate = null;
+            try {
+                const saved = localStorage.getItem(scopedKey('travel_kb_flightinfo'));
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    currentArrivalFlight = parsed.arrival || null;
+                    currentDepartureFlight = parsed.departure || null;
+                    currentArrivalQueryDate = parsed.arrivalDate || null;
+                    currentDepartureQueryDate = parsed.departureDate || null;
+                }
+            } catch (e) {
+                console.error("LocalStorage load error (flightinfo):", e);
+            }
+        }
+
+        // 儲存「已查詢航班」資訊至 LocalStorage（存進目前登入帳號自己的範圍）
+        function saveFlightInfo() {
+            try {
+                localStorage.setItem(scopedKey('travel_kb_flightinfo'), JSON.stringify({
+                    arrival: currentArrivalFlight,
+                    departure: currentDepartureFlight,
+                    arrivalDate: currentArrivalQueryDate,
+                    departureDate: currentDepartureQueryDate
+                }));
+            } catch (e) {
+                console.error("LocalStorage save error (flightinfo):", e);
             }
         }
 
