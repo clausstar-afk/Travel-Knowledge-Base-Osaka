@@ -126,17 +126,22 @@
                 </label>
             </div>
             <div class="flex flex-col sm:flex-row gap-2">
-                <input type="text" id="flight-number-input" placeholder="去程航班號碼，例如 CI173"
-                    list="flight-number-suggestions" autocomplete="off" oninput="onFlightNumberInput()"
-                    class="flex-1 px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
-                <datalist id="flight-number-suggestions"></datalist>
-                <input type="date" id="flight-date-input"
+                <!-- relative 容器讓下面的自訂建議清單可以絕對定位貼齊這個輸入框，取代原生 <datalist>
+                     （原生的樣式沒辦法客製、又跟全站風格不搭，且部分瀏覽器清空輸入框後選項不會跟著消失） -->
+                <div class="relative flex-1">
+                    <input type="text" id="flight-number-input" placeholder="去程航班號碼，例如 CI173"
+                        autocomplete="off" oninput="onFlightNumberInput()" onblur="hideFlightNumberSuggestions()"
+                        class="w-full px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                    <div id="flight-number-suggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#faf6ee] border border-[#c3d3d9] rounded-xl shadow-lg overflow-hidden"></div>
+                </div>
+                <input type="date" id="flight-date-input" onchange="onFlightDateChange()"
                     class="px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
                 <button onclick="lookupFlight()" id="flight-lookup-btn"
                     class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#496475] rounded-xl transition shrink-0">
                     查詢航班
                 </button>
             </div>
+            <p id="flight-date-warning" class="text-[11px] text-amber-600 mt-1 hidden"></p>
             <p id="flight-lookup-status" class="text-[11px] text-[#6f92a0] mt-2"></p>
             <!-- 提醒使用者：查到去程航班日期後，天氣預報跟 AI 打包提醒才會有資料可以顯示，
                  不然這兩個功能會一直悄悄地不出現、使用者也不知道要怎麼觸發 -->
@@ -502,18 +507,33 @@
         }
 
         // ⌨️ 航班號碼自動完成建議：打字打到一半（至少 2 碼）就去問 AeroDataBox「這開頭有哪些航班號」，
-        // 用瀏覽器原生 <datalist> 顯示建議清單，避免手打漏字/打錯格式導致查詢失敗。
-        // 用 debounce（停止打字 400ms 後才發request）＋ 快取查過的關鍵字，減少 API 用量（免費額度有限）。
+        // 自己刻一個小下拉選單（不用原生 <datalist>，因為原生樣式沒辦法客製、跟全站風格不搭，
+        // 而且清空輸入框後選項有時不會跟著消失）。
+        // 用 debounce（停止打字 300ms 後才發 request）＋ 快取查過的關鍵字，減少 API 用量（免費額度有限）。
         let flightNumberSuggestTimer = null;
+        let flightNumberSuggestSeq = 0; // 避免「打字很快、舊的慢回應蓋掉新的結果」這種競態問題
         const flightNumberSuggestCache = {};
         function onFlightNumberInput() {
             clearTimeout(flightNumberSuggestTimer);
             const query = document.getElementById('flight-number-input').value.trim();
-            if (query.length < 2) return;
-            flightNumberSuggestTimer = setTimeout(() => fetchFlightNumberSuggestions(query), 400);
+            if (query.length < 2) {
+                hideFlightNumberSuggestions(); // 字數不夠或被清空時立刻收起來，不留殘影
+                return;
+            }
+            showFlightNumberSuggestionsLoading();
+            flightNumberSuggestTimer = setTimeout(() => fetchFlightNumberSuggestions(query), 300);
+        }
+        function showFlightNumberSuggestionsLoading() {
+            const box = document.getElementById('flight-number-suggestions');
+            box.innerHTML = `<div class="px-4 py-2.5 text-xs text-slate-400">查詢中…</div>`;
+            box.classList.remove('hidden');
+        }
+        function hideFlightNumberSuggestions() {
+            // 延遲一點點才收起來，讓「點擊建議項目」的 mousedown 事件能先於 input 的 blur 觸發、順利選到值
+            setTimeout(() => document.getElementById('flight-number-suggestions').classList.add('hidden'), 150);
         }
         async function fetchFlightNumberSuggestions(query) {
-            const datalist = document.getElementById('flight-number-suggestions');
+            const mySeq = ++flightNumberSuggestSeq;
             const cacheKey = query.toUpperCase();
             if (flightNumberSuggestCache[cacheKey]) {
                 renderFlightNumberSuggestions(flightNumberSuggestCache[cacheKey]);
@@ -524,7 +544,8 @@
                 const res = await fetch(url, {
                     headers: { 'x-rapidapi-host': 'aerodatabox.p.rapidapi.com', 'x-rapidapi-key': AERODATABOX_KEY }
                 });
-                if (!res.ok) return; // 建議清單查不到就靜默略過，不影響原本手動輸入查詢的功能
+                if (mySeq !== flightNumberSuggestSeq) return; // 使用者已經繼續打字，這個回應太舊了，不採用
+                if (!res.ok) { document.getElementById('flight-number-suggestions').classList.add('hidden'); return; }
                 const data = await res.json();
                 const numbers = Array.isArray(data.items) ? data.items.map(item => item.number).filter(Boolean) : [];
                 flightNumberSuggestCache[cacheKey] = numbers;
@@ -534,8 +555,58 @@
             }
         }
         function renderFlightNumberSuggestions(numbers) {
-            const datalist = document.getElementById('flight-number-suggestions');
-            datalist.innerHTML = numbers.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+            const box = document.getElementById('flight-number-suggestions');
+            if (numbers.length === 0) {
+                box.innerHTML = `<div class="px-4 py-2.5 text-xs text-slate-400">沒有符合的航班號碼</div>`;
+                box.classList.remove('hidden');
+                return;
+            }
+            box.innerHTML = numbers.map(n => `
+                <div class="px-4 py-2 text-sm text-[#2a3e4a] cursor-pointer hover:bg-[#eef3f5] border-b border-[#e8dcc8] last:border-b-0"
+                    onmousedown="selectFlightNumberSuggestion('${escapeJsAttr(n)}')">${escapeHtml(n)}</div>
+            `).join('');
+            box.classList.remove('hidden');
+        }
+        function selectFlightNumberSuggestion(number) {
+            document.getElementById('flight-number-input').value = number;
+            document.getElementById('flight-number-suggestions').classList.add('hidden');
+            onFlightDateChange(); // 選好航班號後，如果日期已經填了，順便重新檢查排班日期
+        }
+
+        // 📅 航班排班日期檢查：使用者選好航班號＋日期後，去問 AeroDataBox「這個航班號哪些日期真的有排班」，
+        // 如果選到的日期不在清單內，用文字警示提醒（原生 <input type="date"> 沒辦法把「清單外的個別日期」
+        // 直接反灰，只能設 min/max 連續區間，所以用這種「選完立刻提示」的方式做替代）
+        const flightScheduledDatesCache = {};
+        async function fetchFlightScheduledDates(flightNumber) {
+            const cacheKey = flightNumber.toUpperCase();
+            if (flightScheduledDatesCache[cacheKey]) return flightScheduledDatesCache[cacheKey];
+            try {
+                const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNumber)}/dates`;
+                const res = await fetch(url, {
+                    headers: { 'x-rapidapi-host': 'aerodatabox.p.rapidapi.com', 'x-rapidapi-key': AERODATABOX_KEY }
+                });
+                if (!res.ok) return null; // 查不到排班日期就靜默略過，不擋原本的查詢流程
+                const dates = await res.json();
+                const dateSet = new Set(Array.isArray(dates) ? dates : []);
+                flightScheduledDatesCache[cacheKey] = dateSet;
+                return dateSet;
+            } catch (e) {
+                console.error('航班排班日期查詢失敗:', e);
+                return null;
+            }
+        }
+        async function onFlightDateChange() {
+            const warningEl = document.getElementById('flight-date-warning');
+            warningEl.classList.add('hidden');
+            const flightNo = document.getElementById('flight-number-input').value.trim();
+            const flightDate = document.getElementById('flight-date-input').value;
+            if (!flightNo || !flightDate) return;
+            const dateSet = await fetchFlightScheduledDates(flightNo);
+            if (!dateSet || dateSet.size === 0) return; // 查不到排班資料時不顯示警示，避免誤判成「這天沒飛」
+            if (!dateSet.has(flightDate)) {
+                warningEl.textContent = `⚠️ ${flightNo} 在 ${flightDate} 這天似乎沒有排班，請確認航班號碼或日期是否正確`;
+                warningEl.classList.remove('hidden');
+            }
         }
 
         // ✈️ 查詢航班資訊：依「去程/回程」選擇，分別存入 currentArrivalFlight 或 currentDepartureFlight
