@@ -73,8 +73,8 @@
                     🍄
                 </div>
                 <div>
-                    <h1 class="hand text-lg font-bold text-slate-900 leading-tight">旅圖知情所</h1>
-                    <p class="text-[11px] text-slate-500">Travel Knowledge Base</p>
+                    <h1 id="brand-title" class="hand text-lg font-bold text-slate-900 leading-tight">旅圖知情所</h1>
+                    <p id="brand-subtitle" class="text-[11px] text-slate-500">Travel Knowledge Base</p>
                 </div>
             </div>
 
@@ -640,6 +640,34 @@
             }
         }
 
+        // 🎯 品牌標題跟下面的英文副標「前後對齊」：中文字之間平均加空格，讓中文標題的頭尾對準英文副標的頭尾寬度。
+        // 用 JS 動態量測、動態分配（flex + justify-content: space-between 逐字分散），而不是寫死固定的
+        // letter-spacing 數值——之後不管中文或英文文案怎麼改，重新整理頁面就會自動重新對齊，不用手動調間距。
+        function alignBrandTitle() {
+            const titleEl = document.getElementById('brand-title');
+            const subtitleEl = document.getElementById('brand-subtitle');
+            if (!titleEl || !subtitleEl) return;
+
+            const originalText = titleEl.textContent.trim();
+            const chars = [...originalText]; // 用展開運算子正確處理多位元組字元（例如未來標題裡有 emoji）
+            if (chars.length < 2) return; // 少於 2 個字沒辦法「之間」加空格，維持原樣就好
+
+            // 先還原成單純文字量測「原本自然寬度」，避免舊的 flex 佈局干擾這次量測結果
+            titleEl.removeAttribute('style');
+            titleEl.textContent = originalText;
+            const naturalTitleWidth = titleEl.getBoundingClientRect().width;
+            const targetWidth = subtitleEl.getBoundingClientRect().width;
+
+            // 只有「中文標題比英文副標窄」時才需要撐開對齊；如果之後文案改了、標題反而比副標寬，
+            // 就維持原本樣子，避免硬撐反而把文字擠壓變形
+            if (naturalTitleWidth >= targetWidth) return;
+
+            titleEl.innerHTML = chars.map(ch => `<span>${ch}</span>`).join('');
+            titleEl.style.display = 'flex';
+            titleEl.style.justifyContent = 'space-between';
+            titleEl.style.width = `${targetWidth}px`;
+        }
+
         // 初始化 Initialization
         document.addEventListener('DOMContentLoaded', async () => {
             loadSavedItinerary();
@@ -648,6 +676,12 @@
             await fetchAttractionsData(); // 要先等景點資料載入完成，分享連結匯入時才能對照出真正存在的景點 id
             restoreUserSession();
             checkForSharedItinerary(); // 🔗 如果網址帶著分享連結參數，詢問是否要匯入
+            // 字體（Zen Maru Gothic）载入完成後再量測寬度並對齊，避免用 fallback 字型的寬度算出錯誤結果
+            if (document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(alignBrandTitle);
+            } else {
+                alignBrandTitle();
+            }
         });
 
         // 🔒 依登入帳號分開儲存行程資料：用 Google 帳號的 sub（這個帳號唯一、穩定的 ID，不會因為
