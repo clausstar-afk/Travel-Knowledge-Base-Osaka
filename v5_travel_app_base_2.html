@@ -2582,7 +2582,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             // 📥 未分配區：放在「Kinopio 風格輸入」跟「手動排程行程表」之間，一進「我的行程」頁籤
             // 就先看到還沒排的待辦清單，再往下才是已經排好的正式行程
             let timelineHTML = `
-                <div class="bg-[#f5ecd9] border-2 border-dashed border-[#d8cba8] rounded-2xl p-4 mt-6"
+                <div class="bg-[#f5ecd9] border-2 border-dashed border-[#d8cba8] rounded-2xl p-4 mt-6 mb-6"
                      ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, 0)">
                     <div class="text-xs font-bold text-slate-500 mb-3">
                         📥 尚未排入任何一天${unassignedIds.length === 0 ? '<span class="text-[#7fa382] font-normal ml-1">・全部景點都已排好囉！</span>' : '（拖曳景點卡片到下方對應的 Day 裡）'}
