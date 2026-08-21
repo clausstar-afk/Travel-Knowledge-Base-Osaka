@@ -718,7 +718,7 @@
 
             try {
                 // ✅ 網址格式已依RapidAPI官方Code Snippets核對確認一致
-                const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNo)}/${flightDate}?withAircraftImage=true&withLocation=false&withFlightPlan=false&dateLocalRole=Both`;
+                const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNo)}/${flightDate}?withAircraftImage=false&withLocation=false&withFlightPlan=false&dateLocalRole=Both`;
                 const res = await fetchAeroDataBox(url);
 
                 if (!res.ok) throw new Error(`查詢失敗（狀態碼 ${res.status}）`);
@@ -728,13 +728,6 @@
                 if (!flight) throw new Error('查無此航班資料');
 
                 const model = flight.aircraft?.model || '機型未提供';
-                // 📷 飛機實拍照片（Flickr 社群貢獻，非官方、也不保證是這一趟航班本人本機），
-                // 只擷取渲染需要用到的欄位，author/title 之後要顯示照片來源（CC BY-SA 授權要求標示出處）
-                const aircraftImage = flight.aircraft?.image?.url ? {
-                    url: flight.aircraft.image.url,
-                    author: flight.aircraft.image.author || '未知作者',
-                    webUrl: flight.aircraft.image.webUrl || ''
-                } : null;
 
                 if (flightType === 'arrival') {
                     // 🛬 去程：使用者關心「幾點降落大阪」，取 arrival 欄位
@@ -746,7 +739,7 @@
                     if (isOsakaAirport) {
                         // ✅ 只有確認抵達的是大阪機場，才把這班機當作行程的「去程」寫入狀態，
                         // 否則像 Day 1 出發時間、時間軸開頭卡片這些都會被完全不相干的錯誤航班資料污染
-                        currentArrivalFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport, image: aircraftImage };
+                        currentArrivalFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport };
                         currentArrivalQueryDate = flightDate;
                         updateFlightDateConstraints();
                         saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
@@ -774,7 +767,7 @@
 
                     if (isOsakaAirport) {
                         // ✅ 只有確認出發地是大阪機場，才把這班機當作行程的「回程」寫入狀態，避免污染行程結尾資訊
-                        currentDepartureFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport, image: aircraftImage };
+                        currentDepartureFlight = { number: flight.number || flightNo, model, airport, time, isOsakaAirport };
                         currentDepartureQueryDate = flightDate;
                         updateFlightDateConstraints();
                         saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
@@ -2586,7 +2579,18 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             }
             document.getElementById('ai-style-input-section').classList.remove('hidden');
 
+            // 📥 未分配區：放在「Kinopio 風格輸入」跟「手動排程行程表」之間，一進「我的行程」頁籤
+            // 就先看到還沒排的待辦清單，再往下才是已經排好的正式行程
             let timelineHTML = `
+                <div class="bg-[#f5ecd9] border-2 border-dashed border-[#d8cba8] rounded-2xl p-4 mt-6"
+                     ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, 0)">
+                    <div class="text-xs font-bold text-slate-500 mb-3">
+                        📥 尚未排入任何一天${unassignedIds.length === 0 ? '<span class="text-[#7fa382] font-normal ml-1">・全部景點都已排好囉！</span>' : '（拖曳景點卡片到下方對應的 Day 裡）'}
+                    </div>
+                    <div class="flex flex-wrap gap-2 min-h-[2rem]">
+                        ${unassignedIds.map(id => byId[id] ? renderUnassignedChip(byId[id]) : '').join('')}
+                    </div>
+                </div>
                 <div class="max-w-3xl mx-auto space-y-6 px-4">
                     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8dcc8] pb-4">
                         <h3 class="hand text-lg font-black text-slate-800 flex items-center gap-2">
@@ -2653,11 +2657,6 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                         <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentArrivalFlight.model)}（時間僅供參考，請以航空公司公告為準）</div>
                         ${warnBlock}
                         ${arrivalSeatMapLink}
-                        ${currentArrivalFlight.image ? `
-                        <div class="mt-2">
-                            <img src="${escapeHtml(currentArrivalFlight.image.url)}" alt="機型參考照片" class="w-full max-h-24 object-cover rounded-xl border border-[#dde7ea]" loading="lazy">
-                            <div class="text-[10px] text-slate-400 mt-1">📷 機型參考照片，非本班機實際拍攝／來源：${escapeHtml(currentArrivalFlight.image.author)}（Flickr, CC BY-SA）</div>
-                        </div>` : ''}
                     </div>
                 `;
             }
@@ -2749,11 +2748,6 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                         <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentDepartureFlight.model)}（時間僅供參考，記得提早2-3小時抵達機場）</div>
                         ${currentDepartureFlight.isOsakaAirport === false ? `<div class="text-[11px] text-amber-600 font-bold mt-2">⚠️ 這不是大阪的機場，請回上方確認航班號碼/日期/方向是否選對</div>` : ''}
                         ${departureSeatMapLink}
-                        ${currentDepartureFlight.image ? `
-                        <div class="mt-2">
-                            <img src="${escapeHtml(currentDepartureFlight.image.url)}" alt="機型參考照片" class="w-full max-h-24 object-cover rounded-xl border border-[#dde7ea]" loading="lazy">
-                            <div class="text-[10px] text-slate-400 mt-1">📷 機型參考照片，非本班機實際拍攝／來源：${escapeHtml(currentDepartureFlight.image.author)}（Flickr, CC BY-SA）</div>
-                        </div>` : ''}
                     </div>
                 `
                 : `
@@ -2765,21 +2759,6 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             timelineHTML += `
                     <div class="pt-2">
                         ${endingBlock}
-                    </div>
-                </div>
-            `;
-
-            // 📥 未分配區：改放在整個行程流程的最後面（去程→Day1...DayN→回程 之後），
-            // 這樣去程航班卡片才能直接接在 Day 1 正上方，符合「查完航班就緊接著看到第一天」的直覺，
-            // 「還沒排」的景點視為行程之外的待辦清單，排在確定的行程之後才合理
-            timelineHTML += `
-                <div class="bg-[#f5ecd9] border-2 border-dashed border-[#d8cba8] rounded-2xl p-4"
-                     ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, 0)">
-                    <div class="text-xs font-bold text-slate-500 mb-3">
-                        📥 尚未排入任何一天${unassignedIds.length === 0 ? '<span class="text-[#7fa382] font-normal ml-1">・全部景點都已排好囉！</span>' : '（拖曳景點卡片到上方對應的 Day 裡）'}
-                    </div>
-                    <div class="flex flex-wrap gap-2 min-h-[2rem]">
-                        ${unassignedIds.map(id => byId[id] ? renderUnassignedChip(byId[id]) : '').join('')}
                     </div>
                 </div>
             `;
