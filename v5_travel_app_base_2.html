@@ -2662,19 +2662,6 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                 `;
             }
 
-            // 📥 未分配區：剛加入行程、還沒被拖進任何一天的景點
-            timelineHTML += `
-                <div class="bg-[#f5ecd9] border-2 border-dashed border-[#d8cba8] rounded-2xl p-4"
-                     ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, 0)">
-                    <div class="text-xs font-bold text-slate-500 mb-3">
-                        📥 尚未排入任何一天${unassignedIds.length === 0 ? '<span class="text-[#7fa382] font-normal ml-1">・全部景點都已排好囉！</span>' : '（拖曳景點卡片到下方對應的 Day 裡）'}
-                    </div>
-                    <div class="flex flex-wrap gap-2 min-h-[2rem]">
-                        ${unassignedIds.map(id => byId[id] ? renderUnassignedChip(byId[id]) : '').join('')}
-                    </div>
-                </div>
-            `;
-
             // 📅 依天數渲染每一天的排程區塊
             for (let d = 1; d <= dayCount; d++) {
                 const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
@@ -2778,6 +2765,21 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             timelineHTML += `
                     <div class="pt-2">
                         ${endingBlock}
+                    </div>
+                </div>
+            `;
+
+            // 📥 未分配區：改放在整個行程流程的最後面（去程→Day1...DayN→回程 之後），
+            // 這樣去程航班卡片才能直接接在 Day 1 正上方，符合「查完航班就緊接著看到第一天」的直覺，
+            // 「還沒排」的景點視為行程之外的待辦清單，排在確定的行程之後才合理
+            timelineHTML += `
+                <div class="bg-[#f5ecd9] border-2 border-dashed border-[#d8cba8] rounded-2xl p-4"
+                     ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, 0)">
+                    <div class="text-xs font-bold text-slate-500 mb-3">
+                        📥 尚未排入任何一天${unassignedIds.length === 0 ? '<span class="text-[#7fa382] font-normal ml-1">・全部景點都已排好囉！</span>' : '（拖曳景點卡片到上方對應的 Day 裡）'}
+                    </div>
+                    <div class="flex flex-wrap gap-2 min-h-[2rem]">
+                        ${unassignedIds.map(id => byId[id] ? renderUnassignedChip(byId[id]) : '').join('')}
                     </div>
                 </div>
             `;
