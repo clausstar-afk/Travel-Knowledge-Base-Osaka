@@ -1496,6 +1496,14 @@ ${list}
             return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery.trim())}`;
         }
 
+        // 🚃 相鄰兩站的「查看交通方式」連結：不需要金鑰、不用額外呼叫任何 API，
+        // Google 地圖的路線網址本身就能吃地名文字（不用經緯度），直接帶起點/終點開新分頁讓 Google 幫忙查轉乘
+        function getTransitDirectionsUrl(fromItem, toItem) {
+            const origin = `${fromItem.name} 大阪`;
+            const destination = `${toItem.name} 大阪`;
+            return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=transit`;
+        }
+
         function renderCards() {
             const timelineContainer = document.getElementById('timeline-container');
             const grid = document.getElementById('attraction-grid');
@@ -2722,10 +2730,16 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                                     const cardHTML = renderDayItemCard(item, d, idx, dayItems.length, schedule[idx], dayDate, dayIsRainy);
                                     const transitMin = schedule[idx].transitToNextMin;
                                     // 🚃 卡片之間顯示區域距離啟發式估算出的交通時間，直接回應「不知道該預留多少交通時間」的痛點
+                                    // 旁邊再加一個「查看交通方式」連結，解決更花時間的下一步：這兩站之間到底該搭哪條線、怎麼轉乘
+                                    const nextItem = dayItems[idx + 1];
                                     const connectorHTML = transitMin !== null ? `
-                                        <div class="flex items-center gap-2 pl-1 text-[11px] text-slate-500 font-medium">
+                                        <div class="flex items-center gap-2 flex-wrap pl-1 text-[11px] text-slate-500 font-medium">
                                             <span class="text-[#5c8aa0]">⬇️</span>
-                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🚃 預估交通約 ${transitMin} 分鐘（${getMainAreaKey(item.area)} → ${getMainAreaKey(dayItems[idx + 1].area)}）</span>
+                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🚃 預估交通約 ${transitMin} 分鐘（${getMainAreaKey(item.area)} → ${getMainAreaKey(nextItem.area)}）</span>
+                                            <a href="${getTransitDirectionsUrl(item, nextItem)}" target="_blank" rel="noopener noreferrer"
+                                               class="inline-flex items-center gap-1 font-bold text-[#5c7a8a] bg-[#eef3f5] hover:bg-[#dde7ea] border border-[#c3d3d9] rounded-full px-2.5 py-1 transition">
+                                                🔍 查看交通方式<span class="text-slate-400 font-normal">↗</span>
+                                            </a>
                                         </div>
                                     ` : '';
                                     return cardHTML + connectorHTML;
