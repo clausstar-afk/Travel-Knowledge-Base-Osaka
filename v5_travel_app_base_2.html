@@ -54,12 +54,11 @@
         }
         /* 🍄 Kinopio 聊天按鈕：清晰的實色細環貼著邊緣（0 模糊，不是大片暈開），
            顏色在淺藍白↔淺紫之間緩慢切換，外層再補一點點柔光增加立體感；按鈕底色加深來襯托 */
-        /* 維持右下角（單手右手操作習慣），改用兩個手段降低跟卡片刪除鈕的碰撞機率：
-           ① clip-path 讓點擊熱區真的收斂成圓形（原本雖然視覺是圓的，但按鈕本身的可點擊範圍其實是整個
-              正方形，四個角落會誤觸到旁邊本來點不到的地方）
-           ② 捲動時自動縮小＋淡化＋暫時關閉點擊（.is-scrolling），停止捲動後才恢復，避免捲動途中經過
-              卡片按鈕上方時被誤觸；不影響原本的顏色/漸層/光暈效果，只是捲動當下暫時縮小 */
-        #chat-fab-wrap { position: fixed; bottom: 6rem; right: 1.5rem; z-index: 40; width: 3.75rem; height: 3.75rem; transition: transform 0.2s ease, opacity 0.2s ease; }
+        /* 改回左下角：右下角即使加上圓形熱區＋捲動縮小，實測平板寬度「靜止不動」時還是會蓋住卡片
+           控制列的按鈕（不是捲動途中才會發生），代表這兩個緩解手段沒辦法保證不重疊。全站沒有任何
+           操作型按鈕聚集在左側，換到左下角才是結構性徹底排除衝突。
+           圓形熱區（clip-path）／捲動縮小淡化（.is-scrolling）／光圈效果全部維持不變，只改位置 */
+        #chat-fab-wrap { position: fixed; bottom: 6rem; left: 1.5rem; z-index: 40; width: 3.75rem; height: 3.75rem; transition: transform 0.2s ease, opacity 0.2s ease; }
         #chat-fab-wrap.is-scrolling { transform: scale(0.55); opacity: 0.45; pointer-events: none; }
         /* 光圈改成獨立的 ::after（不疊在按鈕本體上），這樣按鈕上的 clip-path（圓形點擊熱區）
            才不會連同 box-shadow 光圈一起被裁掉——clip-path 會裁掉整個元素的繪製範圍，
@@ -395,7 +394,7 @@
             title="問 Kinopio 旅遊問題">🍄</button>
     </div>
 
-    <div id="chat-panel" class="hidden fixed bottom-24 right-6 z-40 w-[min(360px,calc(100vw-2rem))] h-[min(520px,calc(100vh-8rem))] bg-[#faf6ee] paper-texture rounded-3xl shadow-2xl border border-[#e3dae8] flex flex-col overflow-hidden">
+    <div id="chat-panel" class="hidden fixed bottom-24 left-6 z-40 w-[min(360px,calc(100vw-2rem))] h-[min(520px,calc(100vh-8rem))] bg-[#faf6ee] paper-texture rounded-3xl shadow-2xl border border-[#e3dae8] flex flex-col overflow-hidden">
         <div class="px-4 py-3 bg-[#6b5a7a] text-white flex items-center justify-between shrink-0">
             <h3 class="hand text-sm font-bold flex items-center gap-2"><span>🍄</span> 問 Kinopio 旅遊問題</h3>
             <button onclick="toggleChatPanel()" class="text-white/80 hover:text-white text-lg font-bold px-1">✕</button>
