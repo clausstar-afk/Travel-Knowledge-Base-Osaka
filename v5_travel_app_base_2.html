@@ -2414,6 +2414,25 @@ ${list}
             loadChecklistState();
             pruneDayPlan();
             saveDayPlan(); // pruneDayPlan 可能清掉幽靈 id，順手存回去保持一致
+
+            // ✈️ 航班資訊也是依帳號分開存的，之前漏了重新載入，導致切換帳號/登出後
+            // 畫面還停在上一個身份查過的航班、天氣、日落資料，要手動重新整理才會恢復正確
+            loadFlightInfo();
+            updateFlightDateConstraints();
+            const flightStatusEl = document.getElementById('flight-lookup-status');
+            if (flightStatusEl) { flightStatusEl.textContent = ''; flightStatusEl.className = 'text-[11px] text-[#5c7a8a] mt-2'; }
+            restoreFlightStatusDisplay();
+            weatherByDate = {};
+            sunsetByDate = {};
+            if (currentArrivalFlight || currentDepartureFlight) {
+                fetchOsakaWeather();
+                fetchSunsetTimes();
+            }
+
+            // 🍄 AI 開場白不屬於任何帳號範圍、只存在記憶體裡，切換身份後對舊帳號的行程內容已經不對，直接清空
+            currentAINarrative = null;
+            isGeneratingNarrative = false;
+
             updateCounts();
             renderCards();
             const checklistModal = document.getElementById('checklist-modal');
