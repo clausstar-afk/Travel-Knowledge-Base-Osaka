@@ -440,9 +440,7 @@
         let unassignedIds = [];        // 已加入行程但尚未被拖進任何一天的景點 id
         let draggedItemId = null;      // 目前正在被拖曳的景點 id
         let dayStartTimes = {};        // { 1: '09:30', 2: '10:00', ... } 每天的出發時間，使用者可自行調整
-        let accommodationNames = {};   // 🏨 { 1: '難波東急飯店', 2: '...' } 每天晚上住的地方（選填，純文字），
-                                        // key=第幾天晚上；用來在隔天早上「從住宿出發」、當天晚上「返回住宿」補上查看交通方式連結
-                                        // 每天分開填，才不會旅途中換飯店就整組失效
+        let accommodationName = '';    // 🏨 住宿名稱（選填，純文字），用來在每天首尾補上「查看交通方式」連結
 
         // 🌤️ 大阪天氣預報（Open-Meteo，免金鑰、免費），確定去程日期後自動查詢
         let weatherByDate = {};        // { 'YYYY-MM-DD': { code, max, min } }
@@ -904,7 +902,7 @@
 
         // 讀取 LocalStorage 保留的「分天 + 拖拉排序」計畫
         function loadDayPlan() {
-            dayCount = 1; dayPlan = [[]]; unassignedIds = []; dayStartTimes = {}; accommodationNames = {};
+            dayCount = 1; dayPlan = [[]]; unassignedIds = []; dayStartTimes = {}; accommodationName = '';
             try {
                 let saved = localStorage.getItem(scopedKey('travel_kb_dayplan'));
                 if (saved === null && getStorageScope() === 'guest') {
@@ -916,7 +914,7 @@
                     dayPlan = Array.isArray(parsed.dayPlan) && parsed.dayPlan.length > 0 ? parsed.dayPlan : [[]];
                     unassignedIds = Array.isArray(parsed.unassignedIds) ? parsed.unassignedIds : [];
                     dayStartTimes = parsed.dayStartTimes && typeof parsed.dayStartTimes === 'object' ? parsed.dayStartTimes : {};
-                    accommodationNames = parsed.accommodationNames && typeof parsed.accommodationNames === 'object' ? parsed.accommodationNames : {};
+                    accommodationName = typeof parsed.accommodationName === 'string' ? parsed.accommodationName : '';
                 }
             } catch (e) {
                 console.error("LocalStorage load error (dayplan):", e);
@@ -926,18 +924,15 @@
         // 儲存「分天 + 拖拉排序」計畫至 LocalStorage（存進目前登入帳號自己的範圍）
         function saveDayPlan() {
             try {
-                localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes, accommodationNames }));
+                localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes, accommodationName }));
             } catch (e) {
                 console.error("LocalStorage save error (dayplan):", e);
             }
         }
 
-        // 🏨 使用者確認某一天晚上的住宿名稱時呼叫（按 ✓ 按鈕或按 Enter）：存起來 + 重新渲染時間軸，
-        // 每天分開存，才不會旅途中途換飯店就讓整個功能失效
-        function setAccommodationName(d, value) {
-            const trimmed = value.trim();
-            if (trimmed) accommodationNames[d] = trimmed;
-            else delete accommodationNames[d];
+        // 🏨 使用者填寫/清空住宿名稱時呼叫：存起來 + 重新渲染時間軸（讓每天首尾的交通連結立刻反映最新輸入）
+        function setAccommodationName(value) {
+            accommodationName = value.trim();
             saveDayPlan();
             generateDynamicTimeline();
         }
@@ -2629,6 +2624,14 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                             <button onclick="setDayCount(${dayCount + 1})" class="w-6 h-6 rounded-lg bg-[#faf6ee] shadow-sm text-slate-600 font-bold text-sm hover:bg-[#f5ecd9]" ${dayCount >= 14 ? 'disabled' : ''}>＋</button>
                         </div>
                     </div>
+                    <!-- 🏨 住宿名稱（選填）：填了之後，每天第一站前面／最後一站後面會補上「查看交通方式」連結，
+                         純文字直接帶進 Google 地圖路線網址，不用另外判斷飯店在哪一區 -->
+                    <div class="flex items-center gap-2 bg-[#f5ecd9] border border-[#e8dcc8] rounded-xl px-3 py-2">
+                        <span class="text-xs font-bold text-slate-600 shrink-0">🏨 住宿地點</span>
+                        <input type="text" value="${escapeHtml(accommodationName)}" placeholder="輸入飯店名稱，選填"
+                            onchange="setAccommodationName(this.value)"
+                            class="flex-1 min-w-0 px-3 py-1.5 text-xs bg-[#faf6ee] border border-[#c3d3d9] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                    </div>
             `;
 
             // 🛡️ 防呆：比對「手動設定的總天數」跟「去程/回程航班暗示的實際天數」是否一致，不一致時提示但不強制覆蓋
@@ -2734,16 +2737,6 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                                 🚩 出發
                                 <input type="time" value="${escapeHtml(currentStart)}" ${earliestStart ? `min="${escapeHtml(earliestStart)}"` : ''} onchange="setDayStartTime(${d}, this.value)" class="border ${startTooEarly ? 'border-amber-400' : 'border-[#d8cba8]'} rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
                             </label>
-                            <!-- 🏨 今晚住宿（選填，每天分開填，換飯店也不影響其他天）：文字框旁邊放明顯的「✓ 確認」按鈕，
-                                 手機使用者常常不知道打完字要點旁邊才會儲存，加按鈕給明確的操作提示，Enter 鍵也可以直接確認 -->
-                            <label class="flex items-center gap-1 text-[11px] text-slate-500 font-bold">
-                                🏨 今晚住宿
-                                <input type="text" id="accommodation-input-${d}" value="${escapeHtml(accommodationNames[d] || '')}" placeholder="選填"
-                                    onkeydown="if(event.key==='Enter'){event.preventDefault(); setAccommodationName(${d}, this.value);}"
-                                    class="w-24 border border-[#d8cba8] rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
-                                <button onclick="setAccommodationName(${d}, document.getElementById('accommodation-input-${d}').value)"
-                                    class="w-6 h-6 shrink-0 rounded-lg bg-[#eef3f5] border border-[#c3d3d9] text-[#5c7a8a] font-bold text-xs hover:bg-[#dde7ea]" title="確認住宿地點">✓</button>
-                            </label>
                             ${weatherBadge}
                             ${sunsetBadge}
                             ${weatherTip ? `<span class="w-full text-[11px] text-[#6b5a7a] font-medium flex items-center gap-1">🍄 ${escapeHtml(weatherTip)}</span>` : ''}
@@ -2755,26 +2748,23 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                             ${dayItems.length === 0
                                 ? `<div class="text-xs text-slate-300 italic py-3 pl-3">（空）把景點拖曳到這裡</div>`
                                 : (() => {
-                                    // 🏨 住宿地點的「查看交通方式」連結：改成每天分開查，昨晚住的飯店（accommodationNames[d-1]）
-                                    // 當今天早上的起點，今晚住的飯店（accommodationNames[d]）當今天的終點——旅途中換飯店也不會互相干擾。
-                                    // Day 1 沒有「前一晚」的資料所以自然不會顯示；最後一天如果已查回程航班，用航班卡片當終點錨點，不重複顯示
-                                    const prevNightHotel = accommodationNames[d - 1];
-                                    const tonightHotel = accommodationNames[d];
-                                    const fromAccommodationHTML = prevNightHotel ? `
+                                    // 🏨 住宿地點的「查看交通方式」連結：Day 1 第一站已經有航班卡片當起點錨點、
+                                    // 最後一天最後一站如果有查回程航班也已經有航班卡片當終點錨點，這兩種情況不重複顯示
+                                    const fromAccommodationHTML = (accommodationName && !(d === 1 && currentArrivalFlight)) ? `
                                         <div class="flex items-center gap-2 flex-wrap pl-1 text-[11px] text-slate-500 font-medium">
                                             <span class="text-[#5c8aa0]">🏨</span>
-                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">從「${escapeHtml(prevNightHotel)}」出發</span>
-                                            <a href="${buildDirectionsUrl(prevNightHotel, dayItems[0].name)}" target="_blank" rel="noopener noreferrer"
+                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">從「${escapeHtml(accommodationName)}」出發</span>
+                                            <a href="${buildDirectionsUrl(accommodationName, dayItems[0].name)}" target="_blank" rel="noopener noreferrer"
                                                class="inline-flex items-center gap-1 font-bold text-[#5c7a8a] bg-[#eef3f5] hover:bg-[#dde7ea] border border-[#c3d3d9] rounded-full px-2.5 py-1 transition">
                                                 🔍 查看交通方式<span class="text-slate-400 font-normal">↗</span>
                                             </a>
                                         </div>
                                     ` : '';
-                                    const toAccommodationHTML = (tonightHotel && !(d === dayCount && currentDepartureFlight)) ? `
+                                    const toAccommodationHTML = (accommodationName && !(d === dayCount && currentDepartureFlight)) ? `
                                         <div class="flex items-center gap-2 flex-wrap pl-1 text-[11px] text-slate-500 font-medium">
                                             <span class="text-[#5c8aa0]">⬇️</span>
-                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🏨 返回「${escapeHtml(tonightHotel)}」</span>
-                                            <a href="${buildDirectionsUrl(dayItems[dayItems.length - 1].name, tonightHotel)}" target="_blank" rel="noopener noreferrer"
+                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🏨 返回「${escapeHtml(accommodationName)}」</span>
+                                            <a href="${buildDirectionsUrl(dayItems[dayItems.length - 1].name, accommodationName)}" target="_blank" rel="noopener noreferrer"
                                                class="inline-flex items-center gap-1 font-bold text-[#5c7a8a] bg-[#eef3f5] hover:bg-[#dde7ea] border border-[#c3d3d9] rounded-full px-2.5 py-1 transition">
                                                 🔍 查看交通方式<span class="text-slate-400 font-normal">↗</span>
                                             </a>
