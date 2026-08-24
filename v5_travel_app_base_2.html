@@ -38,7 +38,7 @@
         body {
             font-family: 'Noto Sans TC', sans-serif;
             /* 🎨 視覺改版：從冷色調的 slate 底色換成溫暖的牛皮紙／米白色，呼應「旅行手帳」質感 */
-            background-color: #f2e9d8;
+            background-color: #f5ecd9;
         }
         /* ✍️ 標題專用字體：Zen Maru Gothic 圓體，圓潤但筆畫扎實，比純手寫字體更好辨識。
            只用在標題／標籤這類字數少、字級大的地方，內文/時段/價錢等資料密集區塊
@@ -160,7 +160,7 @@
                 </button>
             </div>
             <p id="flight-date-warning" class="text-[11px] text-amber-600 mt-1 hidden"></p>
-            <p id="flight-lookup-status" class="text-[11px] text-[#6f92a0] mt-2"></p>
+            <p id="flight-lookup-status" class="text-[11px] text-[#5c7a8a] mt-2"></p>
             <!-- 提醒使用者：查到去程航班日期後，天氣預報跟 Kinopio 打包提醒才會有資料可以顯示，
                  不然這兩個功能會一直悄悄地不出現、使用者也不知道要怎麼觸發 -->
             <p class="text-[11px] text-[#8ba7b3] mt-1">💡 查詢去程航班、確定抵達日期後，「我的行程」頁籤會自動顯示大阪天氣預報，Kinopio 也會幫你寫打包提醒</p>
@@ -183,7 +183,7 @@
                     </button>
                     <button id="tab-itinerary" onclick="switchTab('itinerary')" class="flex-1 sm:flex-initial px-5 py-2 text-xs font-bold rounded-xl transition text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 whitespace-nowrap">
                         <span>我的行程</span>
-                        <span id="count-itinerary" class="px-2 py-0.5 text-[10px] font-extrabold bg-[#2c5f7c] text-white rounded-full">0</span>
+                        <span id="count-itinerary" class="px-2 py-0.5 text-[11px] font-extrabold bg-[#2c5f7c] text-white rounded-full">0</span>
                     </button>
                 </div>
 
@@ -196,10 +196,10 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                         </svg>
                         <input type="text" id="search-input" oninput="handleSearch()" onkeydown="if(event.key==='Enter' && !event.isComposing) handleAISearch()" placeholder="搜尋關鍵字，或描述你想要的景點後按 Enter 讓 Kinopio 找"
-                        class="w-full pl-10 pr-28 py-2.5 text-sm bg-[#faf6ee] border border-[#d8cba8] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#3d7290] focus:border-transparent transition shadow-sm">
+                        class="w-full pl-10 pr-28 py-2.5 text-sm bg-[#faf6ee] border border-[#d8cba8] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#2c5f7c] focus:border-transparent transition shadow-sm">
                         <!-- 🍄 Kinopio：這個 App 的 AI 助理角色，帶路的嚮導人設。按鈕維持圖示為主（空間有限），
                              完整名字放在 title 提示跟下方說明文字裡 -->
-                        <button id="ai-search-btn" onclick="handleAISearch()" title="用自然語言描述，讓 Kinopio 幫你找景點（例如：適合下雨天的室內景點）" class="absolute right-2 top-1/2 -translate-y-1/2 h-8 px-3 rounded-full bg-[#e3dae8] hover:bg-[#cab8d4] active:bg-[#b096bf] text-[#564865] text-xs font-bold flex items-center gap-1 transition whitespace-nowrap">
+                        <button id="ai-search-btn" onclick="handleAISearch()" title="用自然語言描述，讓 Kinopio 幫你找景點（例如：適合下雨天的室內景點）" class="absolute right-2 top-1/2 -translate-y-1/2 h-8 px-3 rounded-full bg-[#e3dae8] hover:bg-[#cab8d4] active:bg-[#9678a5] text-[#564865] text-xs font-bold flex items-center gap-1 transition whitespace-nowrap">
                             <span>🍄</span> Kinopio
                         </button>
                     </div>
@@ -1671,7 +1671,7 @@ ${list}
                             <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
                             <!-- 左上角：分類標籤群 -->
                             <div class="absolute top-2.5 left-2.5 flex flex-wrap gap-1 z-10 max-w-[75%]">
-                                ${tags.map(t => `<span class="px-2 py-0.5 text-[10px] font-medium text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full shadow-sm">${escapeHtml(t)}</span>`).join('')}
+                                ${tags.map(t => `<span class="px-2 py-0.5 text-[11px] font-medium text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full shadow-sm">${escapeHtml(t)}</span>`).join('')}
                             </div>
                             <!-- 右上角：Google 評分 (★ + 分數) -->
                             <div class="absolute top-2.5 right-2.5 z-10">
@@ -1713,30 +1713,30 @@ ${list}
                                  每個值跟備註都改用 truncate 單行＋title 屬性，資訊完全沒少，只是不再預留大量空白 -->
                             <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                                 <div class="min-w-0">
-                                    <div class="text-[10px] font-medium text-slate-400">營業時間</div>
+                                    <div class="text-[11px] font-medium text-slate-400">營業時間</div>
                                     <div class="font-bold text-slate-700 truncate" title="${safeHours}">${safeHours}</div>
-                                    <div class="text-[10px] text-slate-400 truncate" title="${safeHoursRemark}">${safeHoursRemark}</div>
-                                    ${lastEntryInfo ? `<div class="text-[10px] text-orange-600 font-bold truncate">${safeLastEntryInfo}</div>` : ''}
+                                    <div class="text-[11px] text-slate-400 truncate" title="${safeHoursRemark}">${safeHoursRemark}</div>
+                                    ${lastEntryInfo ? `<div class="text-[11px] text-orange-600 font-bold truncate">${safeLastEntryInfo}</div>` : ''}
                                 </div>
                                 <div class="min-w-0">
-                                    <div class="text-[10px] font-medium text-slate-400">門票資訊</div>
+                                    <div class="text-[11px] font-medium text-slate-400">門票資訊</div>
                                     <div class="font-bold text-slate-700 truncate" title="${safeTicket}">${safeTicket}</div>
-                                    <div class="text-[10px] text-[#6b8f71] font-medium truncate" title="${safeTicketRemark}">${safeTicketRemark}</div>
+                                    <div class="text-[11px] text-[#6b8f71] font-medium truncate" title="${safeTicketRemark}">${safeTicketRemark}</div>
                                 </div>
                                 <div class="min-w-0">
-                                    <div class="text-[10px] font-medium text-slate-400">交通方式</div>
+                                    <div class="text-[11px] font-medium text-slate-400">交通方式</div>
                                     <div class="font-bold text-slate-700 truncate" title="${safeTransport}">${safeTransport}</div>
-                                    <div class="text-[10px] text-slate-400 truncate" title="${safeTransportRemark}">${safeTransportRemark}</div>
+                                    <div class="text-[11px] text-slate-400 truncate" title="${safeTransportRemark}">${safeTransportRemark}</div>
                                 </div>
                                 <div class="min-w-0">
-                                    <div class="text-[10px] font-medium text-slate-400">建議停留</div>
+                                    <div class="text-[11px] font-medium text-slate-400">建議停留</div>
                                     <div class="font-bold text-slate-700 truncate" title="${safeStay}">${safeStay}</div>
-                                    <div class="text-[10px] text-slate-400 truncate" title="${safeStayRemark}">${safeStayRemark}</div>
+                                    <div class="text-[11px] text-slate-400 truncate" title="${safeStayRemark}">${safeStayRemark}</div>
                                 </div>
                             </div>
 
                             <!-- 5. 免責聲明與官網連結 -->
-                            <div class="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                            <div class="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
                                 <span class="flex items-center gap-1">
                                     <span>⚠️</span> 時間以官網為準
                                 </span>
@@ -2107,7 +2107,7 @@ ${list}
                 tableBody.innerHTML = groups.map(({ dayLabel, rows }) => rows.map(({ item, timeLabel, warnText }, idx) => `
                     <tr class="hover:bg-[#f5ecd9]">
                         ${idx === 0 ? `<td class="p-3 font-bold text-[#2c5f7c] align-top whitespace-nowrap" rowspan="${rows.length}">${escapeHtml(dayLabel)}</td>` : ''}
-                        <td class="p-3 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(item.name)}${warnText ? `<div class="text-[10px] font-normal text-amber-600 mt-0.5 whitespace-normal">${escapeHtml(warnText)}</div>` : ''}</td>
+                        <td class="p-3 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(item.name)}${warnText ? `<div class="text-[11px] font-normal text-amber-600 mt-0.5 whitespace-normal">${escapeHtml(warnText)}</div>` : ''}</td>
                         <td class="p-3 whitespace-nowrap">${escapeHtml(item.area)}</td>
                         <td class="p-3 whitespace-nowrap">${escapeHtml(timeLabel)}</td>
                         <td class="p-3 whitespace-nowrap">${escapeHtml(item.ticket)}</td>
@@ -2334,9 +2334,9 @@ ${list}
             body.innerHTML = CHECKLIST_ITEMS.map(item => {
                 const checked = !!checklistState[item.id];
                 return `
-                    <label class="flex items-center gap-3 p-3 rounded-xl border ${checked ? 'border-[#c2d6b8] bg-[#eef3ea]' : 'border-[#e8dcc8] bg-[#f5ecd9]/50'} cursor-pointer transition">
+                    <label class="flex items-center gap-3 p-3 rounded-xl border ${checked ? 'border-[#7fa382] bg-[#eef3ea]' : 'border-[#e8dcc8] bg-[#f5ecd9]/50'} cursor-pointer transition">
                         <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleChecklistItem('${item.id}')" class="w-5 h-5 rounded accent-[#6b8f71]">
-                        <span class="text-sm ${checked ? 'text-[#3f5642] line-through' : 'text-slate-700'} font-medium">${item.label}</span>
+                        <span class="text-sm ${checked ? 'text-[#557259] line-through' : 'text-slate-700'} font-medium">${item.label}</span>
                     </label>
                 `;
             }).join('');
@@ -2597,7 +2597,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             btn.textContent = '確定？';
             // 確認狀態一律換成「自動寬度的膠囊按鈕」，不再塞進原本給單一圖示用的固定正方形裡——
             // 「確定？」三個字塞在 32×32px 的方框會被擠成兩行，看起來很隨便，這裡直接給它需要的寬度
-            btn.className = 'shrink-0 h-8 px-3 rounded-lg flex items-center justify-center text-xs font-bold text-white bg-[#a8362b] hover:bg-[#8a2a21] whitespace-nowrap transition';
+            btn.className = 'shrink-0 h-8 px-3 rounded-lg flex items-center justify-center text-xs font-bold text-white bg-[#a8362b] hover:bg-[#a8362b]/90 whitespace-nowrap transition';
             clearTimeout(deleteConfirmTimeout);
             deleteConfirmTimeout = setTimeout(() => {
                 btn.dataset.confirming = '0';
@@ -2633,12 +2633,12 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                      ondrop="handleCardDrop(event, 0, '${item.id}')">
                     <span class="text-slate-300 text-xs select-none">⠿</span>
                     <span class="text-xs font-bold text-slate-700">${safeName}</span>
-                    <select onchange="moveItemToDay('${item.id}', parseInt(this.value, 10))" class="text-[10px] text-[#3d7290] font-bold bg-transparent border-none ml-1 focus:outline-none">
+                    <select onchange="moveItemToDay('${item.id}', parseInt(this.value, 10))" class="text-[11px] text-[#2c5f7c] font-bold bg-transparent border-none ml-1 focus:outline-none">
                         <option value="" selected disabled>排入天數 ▶</option>
                         ${dayOptions}
                     </select>
                     <span class="w-px h-4 bg-[#d8cba8]"></span>
-                    <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="text-[10px] px-1 py-0.5 rounded text-[#c46b5c] hover:bg-[#f6e9e6] whitespace-nowrap">🗑</button>
+                    <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="text-[11px] px-1 py-0.5 rounded text-[#c46b5c] hover:bg-[#f6e9e6] whitespace-nowrap">🗑</button>
                 </div>
             `;
         }
@@ -2741,7 +2741,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                                 <button onclick="moveItemWithinDay('${item.id}', -1)" ${idx === 0 ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${idx === 0 ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="往上移">↑</button>
                                 <button onclick="moveItemWithinDay('${item.id}', 1)" ${idx === total - 1 ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${idx === total - 1 ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="往下移">↓</button>
                             </div>
-                            <span class="text-[10px] text-slate-400 font-medium">同天排序</span>
+                            <span class="text-[11px] text-slate-400 font-medium">同天排序</span>
                         </div>
                         <span class="w-px h-8 bg-[#d8cba8] shrink-0"></span>
                         <div class="flex flex-col items-center gap-1">
@@ -2749,7 +2749,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                                 <button onclick="moveItemDay('${item.id}', -1)" ${dayIndex <= 1 ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${dayIndex <= 1 ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="移到前一天">◀</button>
                                 <button onclick="moveItemDay('${item.id}', 1)" ${dayIndex >= dayCount ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${dayIndex >= dayCount ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="移到後一天">▶</button>
                             </div>
-                            <span class="text-[10px] text-slate-400 font-medium">換天</span>
+                            <span class="text-[11px] text-slate-400 font-medium">換天</span>
                         </div>
                         <button onclick="moveItemDay('${item.id}', ${-dayIndex})" class="ml-auto h-9 px-3 text-xs font-bold rounded-lg border border-[#d8cba8] bg-[#f5ecd9] text-slate-600 hover:bg-[#e8dcc8] active:bg-[#d8cba8]" title="移出這一天，退回未分配區">移出</button>
                     </div>
@@ -2840,9 +2840,9 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                 const isStale = getItineraryStructureSnapshot() !== currentAINarrative.snapshot;
                 timelineHTML += `
                     <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4">
-                        <div class="text-[10px] font-bold text-[#9678a5] mb-1">🍄 Kinopio 的行程小提醒</div>
+                        <div class="text-[11px] font-bold text-[#9678a5] mb-1">🍄 Kinopio 的行程小提醒</div>
                         <p class="text-sm text-[#2e2639] leading-relaxed">🍄 Kinopio 說：${escapeHtml(currentAINarrative.opening)}</p>
-                        ${isStale ? '<p class="text-[10px] text-amber-500 mt-2">行程內容有更新，按上方按鈕可重新生成介紹</p>' : ''}
+                        ${isStale ? '<p class="text-[11px] text-amber-500 mt-2">行程內容有更新，按上方按鈕可重新生成介紹</p>' : ''}
                     </div>
                 `;
             }
@@ -2918,7 +2918,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                             ${weatherBadge}
                             ${sunsetBadge}
                             ${weatherTip ? `<span class="w-full text-[11px] text-[#6b5a7a] font-medium flex items-center gap-1">🍄 ${escapeHtml(weatherTip)}</span>` : ''}
-                            ${packingTip ? `<span class="w-full text-[11px] text-[#7f6690] font-medium flex items-center gap-1">🎒 ${escapeHtml(packingTip)}</span>` : ''}
+                            ${packingTip ? `<span class="w-full text-[11px] text-[#564865] font-medium flex items-center gap-1">🎒 ${escapeHtml(packingTip)}</span>` : ''}
                             ${startTimeWarning}
                         </div>
                         <div class="pl-9 ml-3.5 border-l-2 border-[#d3e3e9] space-y-3 pb-1 min-h-[3.5rem]"
@@ -2933,7 +2933,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                                     const nextItem = dayItems[idx + 1];
                                     const connectorHTML = transitMin !== null ? `
                                         <div class="flex items-center gap-2 flex-wrap pl-1 text-[11px] text-slate-500 font-medium">
-                                            <span class="text-[#5c8aa0]">⬇️</span>
+                                            <span class="text-[#5c7a8a]">⬇️</span>
                                             <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🚃 預估交通約 ${transitMin} 分鐘（${getMainAreaKey(item.area)} → ${getMainAreaKey(nextItem.area)}）</span>
                                             <a href="${getTransitDirectionsUrl(item, nextItem)}" target="_blank" rel="noopener noreferrer"
                                                class="inline-flex items-center gap-1 font-bold text-[#5c7a8a] bg-[#eef3f5] hover:bg-[#dde7ea] border border-[#c3d3d9] rounded-full px-2.5 py-1 transition">
@@ -2964,7 +2964,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                     </div>
                 `
                 : `
-                    <div class="bg-[#eef3ea] text-[#3f5642] px-4 py-1.5 rounded-xl inline-block text-xs font-bold shadow-sm">
+                    <div class="bg-[#eef3ea] text-[#557259] px-4 py-1.5 rounded-xl inline-block text-xs font-bold shadow-sm">
                         ✈️ 行程完美結束，準備前往機場搭機返台！
                     </div>
                 `;
