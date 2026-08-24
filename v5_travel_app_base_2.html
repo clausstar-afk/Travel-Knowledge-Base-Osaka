@@ -52,22 +52,24 @@
                 radial-gradient(circle at 15% 25%, rgba(0,0,0,0.025) 0%, transparent 35%),
                 radial-gradient(circle at 85% 75%, rgba(0,0,0,0.025) 0%, transparent 35%);
         }
-        /* 🍄 Kinopio 聊天按鈕：大範圍模糊暈染＋顏色流動的光暈（柔和版），按鈕底色加深，
-           在網頁本身偏淺的暖色背景上才能襯出光暈，不會被背景稀釋看不清楚 */
+        /* 🍄 Kinopio 聊天按鈕：清晰的實色細環貼著邊緣（0 模糊，不是大片暈開），
+           顏色在淺藍白↔淺紫之間緩慢切換，外層再補一點點柔光增加立體感；按鈕底色加深來襯托 */
         #chat-fab-wrap { position: fixed; bottom: 6rem; right: 1.5rem; z-index: 40; width: 3.75rem; height: 3.75rem; }
-        #chat-fab-wrap::before {
-            content: '';
-            position: absolute;
-            inset: -18px;
-            border-radius: 9999px;
-            background: conic-gradient(from 0deg, #7a5aa8, #ad8fc9, #e0cdf0, #9678c9, #7a5aa8);
-            filter: blur(18px);
-            opacity: 0.5;
-            z-index: 0;
-            animation: kinopio-glow-spin 8s linear infinite, kinopio-glow-breathe 3.5s ease-in-out infinite;
+        #chat-fab { animation: kinopio-rim-glow 3s ease-in-out infinite; }
+        @keyframes kinopio-rim-glow {
+            0%, 100% {
+                box-shadow:
+                    0 0 0 3px rgba(210, 235, 255, 0.95),
+                    0 0 16px 3px rgba(160, 200, 240, 0.55),
+                    0 4px 10px rgba(0,0,0,0.35);
+            }
+            50% {
+                box-shadow:
+                    0 0 0 3px rgba(220, 200, 250, 0.95),
+                    0 0 18px 4px rgba(190, 160, 235, 0.6),
+                    0 4px 10px rgba(0,0,0,0.35);
+            }
         }
-        @keyframes kinopio-glow-spin { to { transform: rotate(360deg); } }
-        @keyframes kinopio-glow-breathe { 0%, 100% { opacity: 0.38; } 50% { opacity: 0.62; } }
         /* 隱藏水滾動條但保持滾動功能 */
         .no-scrollbar::-webkit-scrollbar {
             display: none;
@@ -375,7 +377,7 @@
          在網頁偏淺的暖色背景上才能把光暈襯出來 -->
     <div id="chat-fab-wrap">
         <button onclick="toggleChatPanel()" id="chat-fab"
-            class="relative z-[1] w-full h-full rounded-full bg-gradient-to-br from-[#7a5a9e] to-[#4e3d63] hover:from-[#6b4d8c] hover:to-[#423454] text-white text-2xl shadow-lg flex items-center justify-center transition"
+            class="relative z-[1] w-full h-full rounded-full bg-gradient-to-br from-[#7a5a9e] to-[#4e3d63] hover:from-[#6b4d8c] hover:to-[#423454] text-white text-2xl flex items-center justify-center transition"
             title="問 Kinopio 旅遊問題">🍄</button>
     </div>
 
