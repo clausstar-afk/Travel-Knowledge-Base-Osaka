@@ -2919,12 +2919,22 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                     </div>
                 ` : '';
 
+                // 🍄 天氣提醒＋打包提醒，合併成一個區塊、共用一顆圖示——跟景點卡片「⚠️ 注意事項」同一套處理邏輯，
+                // 兩則提醒統一用同一種字級/顏色/行距，不要像以前那樣各自一行、各自一顆圖示、顏色還深淺不一
+                const kinopioTips = [weatherTip, packingTip].filter(Boolean);
+                const kinopioTipBlock = kinopioTips.length > 0
+                    ? `<div class="w-full p-2.5 bg-[#f2eef4] rounded-lg text-xs text-[#564865] leading-relaxed">
+                            <div class="font-bold flex items-center gap-1">🍄 Kinopio 提醒</div>
+                            <ul class="mt-1 ml-4 list-disc space-y-0.5 font-medium">${kinopioTips.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
+                       </div>`
+                    : '';
+
                 timelineHTML += `
                     <div>
-                        <div class="flex flex-wrap items-center gap-2 mb-3">
+                        <div class="flex flex-wrap items-center gap-2 mb-2">
                             <div class="w-7 h-7 rounded-full bg-[#2c5f7c] text-white flex items-center justify-center text-xs font-bold shadow-md shadow-[#d3e3e9] shrink-0">${d}</div>
                             <div class="hand bg-[#eaf1f4] text-[#1a3a4a] px-4 py-1.5 rounded-xl text-xs font-bold shadow-sm">
-                                ${dayLabel}${dayBlurb ? `：${escapeHtml(dayBlurb)}` : (dayItems.length > 0 ? `：共 ${dayItems.length} 個景點` : '')}
+                                ${dayLabel}
                             </div>
                             <label class="flex items-center gap-1 text-[11px] text-slate-500 font-bold">
                                 🚩 出發
@@ -2932,8 +2942,14 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                             </label>
                             ${weatherBadge}
                             ${sunsetBadge}
-                            ${weatherTip ? `<span class="w-full text-[11px] text-[#6b5a7a] font-medium flex items-center gap-1">🍄 ${escapeHtml(weatherTip)}</span>` : ''}
-                            ${packingTip ? `<span class="w-full text-[11px] text-[#564865] font-medium flex items-center gap-1">🎒 ${escapeHtml(packingTip)}</span>` : ''}
+                        </div>
+                        <!-- 📝 AI 小語獨立一行放在標題列下方，不再塞進 Day 徽章裡——徽章塞進一整句話會被撐得又寬又不固定，
+                             跟天氣/日落徽章擠在同一個自動換行的橫排裡，長度一撐大就會把天氣/日落擠到下一行 -->
+                        ${dayBlurb
+                            ? `<p class="text-xs text-slate-500 italic mb-3">${escapeHtml(dayBlurb)}</p>`
+                            : (dayItems.length > 0 ? `<p class="text-xs text-slate-400 mb-3">共 ${dayItems.length} 個景點</p>` : '')}
+                        <div class="flex flex-wrap items-center gap-2 mb-3">
+                            ${kinopioTipBlock}
                             ${startTimeWarning}
                         </div>
                         <div class="pl-9 ml-3.5 border-l-2 border-[#d3e3e9] space-y-3 pb-1 min-h-[3.5rem]"
