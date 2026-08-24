@@ -129,7 +129,7 @@
              只在「所有景點」頁籤顯示，切到「我的行程」時隱藏（由 switchTab() 控制 hidden）：
              查到航班後時間軸本身就會顯示抵達/起飛卡片，兩邊同時放輸入表單只是佔版面、資訊重複 -->
         <div id="flight-section" class="mb-6 p-5 bg-[#eef3f5] border border-[#dde7ea] rounded-2xl">
-            <h3 class="hand text-sm font-bold text-[#2a3e4a] flex items-center gap-2 mb-3">
+            <h3 class="hand text-sm font-bold text-[#37505f] flex items-center gap-2 mb-3">
                 <span>✈️</span> 輸入航班資訊，自動加到行程開頭或結尾
             </h3>
             <!-- 去程/回程選擇：決定插入時間軸的最前面還是最後面 -->
@@ -155,7 +155,7 @@
                 <input type="date" id="flight-date-input" onchange="onFlightDateChange()"
                     class="px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
                 <button onclick="lookupFlight()" id="flight-lookup-btn"
-                    class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#496475] rounded-xl transition shrink-0">
+                    class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#37505f] rounded-xl transition shrink-0">
                     查詢航班
                 </button>
             </div>
@@ -323,13 +323,13 @@
                 <!-- 📥 下載行程表：把原本分開的「下載日曆」按鈕跟 .md／.csv 匯出合併成一個按鈕＋格式選單，
                      複製相關的按鈕（分享連結／表格文字）維持不變，只有「下載」這件事合併起來 -->
                 <div class="relative">
-                    <button onclick="toggleDownloadMenu(event)" class="px-4 py-2 text-xs font-bold text-white bg-[#5c7a8a] hover:bg-[#496475] rounded-xl transition shadow-sm">
+                    <button onclick="toggleDownloadMenu(event)" class="px-4 py-2 text-xs font-bold text-white bg-[#5c7a8a] hover:bg-[#37505f] rounded-xl transition shadow-sm">
                         📥 下載行程表 ▾
                     </button>
                     <div id="download-format-menu" class="hidden absolute bottom-full mb-1 right-0 z-20 bg-[#faf6ee] border border-[#c3d3d9] rounded-xl shadow-lg overflow-hidden w-44">
-                        <button onclick="downloadMarkdown()" class="w-full text-left px-4 py-2.5 text-xs text-[#2a3e4a] hover:bg-[#eef3f5] border-b border-[#e8dcc8]">📝 Markdown（.md）</button>
-                        <button onclick="downloadCSV()" class="w-full text-left px-4 py-2.5 text-xs text-[#2a3e4a] hover:bg-[#eef3f5] border-b border-[#e8dcc8]">📊 CSV（.csv）</button>
-                        <button onclick="downloadICS()" class="w-full text-left px-4 py-2.5 text-xs text-[#2a3e4a] hover:bg-[#eef3f5]">📅 日曆（.ics）</button>
+                        <button onclick="downloadMarkdown()" class="w-full text-left px-4 py-2.5 text-xs text-[#37505f] hover:bg-[#eef3f5] border-b border-[#e8dcc8]">📝 Markdown（.md）</button>
+                        <button onclick="downloadCSV()" class="w-full text-left px-4 py-2.5 text-xs text-[#37505f] hover:bg-[#eef3f5] border-b border-[#e8dcc8]">📊 CSV（.csv）</button>
+                        <button onclick="downloadICS()" class="w-full text-left px-4 py-2.5 text-xs text-[#37505f] hover:bg-[#eef3f5]">📅 日曆（.ics）</button>
                     </div>
                 </div>
                 <button onclick="copyShareLink()" class="px-4 py-2 text-xs font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-xl transition shadow-sm">
@@ -579,8 +579,11 @@
             if (currentDepartureFlight) {
                 parts.push(`🛫 回程 ${escapeHtml(currentDepartureFlight.number)}，${escapeHtml(currentDepartureFlight.airport)} 起飛：${escapeHtml(currentDepartureFlight.time)}`);
             }
-            statusEl.innerHTML = `✅ 已還原之前查過的航班資訊<br>${parts.join('<br>')}`;
-            statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
+            statusEl.innerHTML = `
+                <div class="font-bold">✅ 已還原之前查過的航班資訊</div>
+                <ul class="mt-1 ml-4 list-disc space-y-0.5 font-medium">${parts.map(p => `<li>${p}</li>`).join('')}</ul>
+            `;
+            statusEl.className = 'mt-2 p-2.5 bg-[#eef3ea] rounded-lg text-[11px] text-[#557259]';
         }
 
         // ⌨️ 航班號碼自動完成建議：打字打到一半（至少 2 碼）就去問 AeroDataBox「這開頭有哪些航班號」，
@@ -639,7 +642,7 @@
             // select-none：手機上直接點文字，瀏覽器有時候會先觸發「選取文字反白」而不是點擊，
             // 導致 onmousedown 選不到值，畫面卻沒有任何提示，使用者只會覺得「點了沒反應」
             box.innerHTML = numbers.map(n => `
-                <div class="px-4 py-2 text-sm text-[#2a3e4a] cursor-pointer select-none hover:bg-[#eef3f5] border-b border-[#e8dcc8] last:border-b-0"
+                <div class="px-4 py-2 text-sm text-[#37505f] cursor-pointer select-none hover:bg-[#eef3f5] border-b border-[#e8dcc8] last:border-b-0"
                     onmousedown="selectFlightNumberSuggestion('${escapeJsAttr(n)}')">${escapeHtml(n)}</div>
             `).join('');
             box.classList.remove('hidden');
@@ -2892,7 +2895,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                 // 🌤️ 這天若查得到天氣預報就顯示小徽章；查不到（旅遊日期太遠、還沒查航班）就靜默不顯示
                 const dayWeather = dayDate ? weatherByDate[formatDateISO(dayDate)] : null;
                 const weatherBadge = dayWeather
-                    ? `<span class="text-[11px] font-bold text-[#496475] bg-[#eef3f5] px-2 py-1 rounded-lg flex items-center gap-1">${weatherIcon(dayWeather.code)} ${dayWeather.max}°/${dayWeather.min}°C</span>`
+                    ? `<span class="text-[11px] font-bold text-[#37505f] bg-[#eef3f5] px-2 py-1 rounded-lg flex items-center gap-1">${weatherIcon(dayWeather.code)} ${dayWeather.max}°/${dayWeather.min}°C</span>`
                     : '';
                 // 🌇 日落時間查得到才顯示，方便安排夜景/展望台這類黃昏後才精彩的景點
                 const daySunset = dayDate ? sunsetByDate[formatDateISO(dayDate)] : null;
