@@ -61,7 +61,15 @@
               卡片按鈕上方時被誤觸；不影響原本的顏色/漸層/光暈效果，只是捲動當下暫時縮小 */
         #chat-fab-wrap { position: fixed; bottom: 6rem; right: 1.5rem; z-index: 40; width: 3.75rem; height: 3.75rem; transition: transform 0.2s ease, opacity 0.2s ease; }
         #chat-fab-wrap.is-scrolling { transform: scale(0.55); opacity: 0.45; pointer-events: none; }
-        #chat-fab { animation: kinopio-rim-glow 3s ease-in-out infinite; clip-path: circle(50%); }
+        /* 光圈改成獨立的 ::after（不疊在按鈕本體上），這樣按鈕上的 clip-path（圓形點擊熱區）
+           才不會連同 box-shadow 光圈一起被裁掉——clip-path 會裁掉整個元素的繪製範圍，
+           包含超出邊框的 box-shadow，直接放在按鈕上會讓光圈消失 */
+        #chat-fab-wrap::after {
+            content: '';
+            position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+            animation: kinopio-rim-glow 3s ease-in-out infinite;
+        }
+        #chat-fab { clip-path: circle(50%); }
         @keyframes kinopio-rim-glow {
             0%, 100% {
                 box-shadow:
