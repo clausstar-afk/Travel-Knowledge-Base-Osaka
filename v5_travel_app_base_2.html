@@ -54,11 +54,14 @@
         }
         /* 🍄 Kinopio 聊天按鈕：清晰的實色細環貼著邊緣（0 模糊，不是大片暈開），
            顏色在淺藍白↔淺紫之間緩慢切換，外層再補一點點柔光增加立體感；按鈕底色加深來襯托 */
-        /* 改到左下角：右下角跟卡片內的刪除鈕／地圖官網連結按鈕同一側，手機捲動時常常疊在一起，
-           點擊誤觸到聊天按鈕（實測過：刪除鈕位置點下去，實際命中的是這顆浮動按鈕）。全站目前沒有
-           任何操作型按鈕聚集在左側，改到左下角可以完全避開這個衝突 */
-        #chat-fab-wrap { position: fixed; bottom: 6rem; left: 1.5rem; z-index: 40; width: 3.75rem; height: 3.75rem; }
-        #chat-fab { animation: kinopio-rim-glow 3s ease-in-out infinite; }
+        /* 維持右下角（單手右手操作習慣），改用兩個手段降低跟卡片刪除鈕的碰撞機率：
+           ① clip-path 讓點擊熱區真的收斂成圓形（原本雖然視覺是圓的，但按鈕本身的可點擊範圍其實是整個
+              正方形，四個角落會誤觸到旁邊本來點不到的地方）
+           ② 捲動時自動縮小＋淡化＋暫時關閉點擊（.is-scrolling），停止捲動後才恢復，避免捲動途中經過
+              卡片按鈕上方時被誤觸；不影響原本的顏色/漸層/光暈效果，只是捲動當下暫時縮小 */
+        #chat-fab-wrap { position: fixed; bottom: 6rem; right: 1.5rem; z-index: 40; width: 3.75rem; height: 3.75rem; transition: transform 0.2s ease, opacity 0.2s ease; }
+        #chat-fab-wrap.is-scrolling { transform: scale(0.55); opacity: 0.45; pointer-events: none; }
+        #chat-fab { animation: kinopio-rim-glow 3s ease-in-out infinite; clip-path: circle(50%); }
         @keyframes kinopio-rim-glow {
             0%, 100% {
                 box-shadow:
@@ -384,7 +387,7 @@
             title="問 Kinopio 旅遊問題">🍄</button>
     </div>
 
-    <div id="chat-panel" class="hidden fixed bottom-24 left-6 z-40 w-[min(360px,calc(100vw-2rem))] h-[min(520px,calc(100vh-8rem))] bg-[#faf6ee] paper-texture rounded-3xl shadow-2xl border border-[#e3dae8] flex flex-col overflow-hidden">
+    <div id="chat-panel" class="hidden fixed bottom-24 right-6 z-40 w-[min(360px,calc(100vw-2rem))] h-[min(520px,calc(100vh-8rem))] bg-[#faf6ee] paper-texture rounded-3xl shadow-2xl border border-[#e3dae8] flex flex-col overflow-hidden">
         <div class="px-4 py-3 bg-[#6b5a7a] text-white flex items-center justify-between shrink-0">
             <h3 class="hand text-sm font-bold flex items-center gap-2"><span>🍄</span> 問 Kinopio 旅遊問題</h3>
             <button onclick="toggleChatPanel()" class="text-white/80 hover:text-white text-lg font-bold px-1">✕</button>
@@ -886,6 +889,17 @@
             titleEl.style.justifyContent = 'space-between';
             titleEl.style.width = `${targetWidth}px`;
         }
+
+        // 🍄 捲動中暫時縮小聊天按鈕（見 #chat-fab-wrap.is-scrolling），停止捲動 350ms 後才恢復原本大小，
+        // 降低捲動途中經過卡片刪除鈕/連結按鈕上方時被誤觸的機率
+        let chatFabScrollTimer = null;
+        window.addEventListener('scroll', () => {
+            const wrap = document.getElementById('chat-fab-wrap');
+            if (!wrap) return;
+            wrap.classList.add('is-scrolling');
+            clearTimeout(chatFabScrollTimer);
+            chatFabScrollTimer = setTimeout(() => wrap.classList.remove('is-scrolling'), 350);
+        }, { passive: true });
 
         // 初始化 Initialization
         // ⌨️ 按 Esc 關閉目前開著的浮動視窗（聊天面板／匯出/行前清單 Modal），符合桌面使用者的直覺操作習慣。
