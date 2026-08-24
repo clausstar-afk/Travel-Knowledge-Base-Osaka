@@ -2698,6 +2698,14 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             const safeWebsite = escapeHtml(item.website);
             const jsAttrName = escapeJsAttr(item.name); // 給 onclick="...('${jsAttrName}')" 用
 
+            // 📏 時段徽章單獨一行、其餘補充資訊放第二行，並用「・」分隔每一項——原本三個沒有分隔符號的
+            // 純文字擠在同一行、跟徽章黏在一起，讀起來像一整串分不清界線的文字，拆開後每項資訊才看得出各自的邊界
+            const metaLine2 = [
+                `建議停留 <span class="font-bold text-[#2c5f7c]">${safeStay}</span>`,
+                lastEntryText,
+                indoorRainNote
+            ].filter(Boolean).join('<span class="text-slate-300 mx-0.5">・</span>');
+
             return `
                 <div class="relative bg-[#faf6ee] paper-texture rounded-sm border-2 border-dashed border-[#c9a876] p-4 shadow-sm hover:shadow-md transition duration-300 cursor-grab active:cursor-grabbing"
                      draggable="true"
@@ -2713,12 +2721,8 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                                 <h4 class="hand text-base font-bold text-slate-800 flex items-center gap-1.5">
                                     <span>${categoryIcon}</span>${safeName}
                                 </h4>
-                                <p class="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
-                                    ${timeBadge}
-                                    <span>建議停留 <span class="font-bold text-[#2c5f7c]">${safeStay}</span></span>
-                                    ${lastEntryText}
-                                    ${indoorRainNote}
-                                </p>
+                                <p class="text-xs mt-1.5">${timeBadge}</p>
+                                <p class="text-xs text-slate-500 mt-1.5 flex items-center flex-wrap">${metaLine2}</p>
                             </div>
                         </div>
                         <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-[#c46b5c] hover:bg-[#f6e9e6] hover:text-[#b04938] transition">🗑</button>
