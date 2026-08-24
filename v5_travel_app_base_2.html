@@ -2677,7 +2677,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             if (isClosedToday) warningItems.push(`這天可能是公休日（${safeHours}），建議改天或上官網確認`);
             if (isOutdoorRainy) warningItems.push('戶外景點，這天有雨');
             const warningBlock = warningItems.length > 0
-                ? `<div class="mt-3 p-2.5 bg-amber-50 rounded-lg text-xs text-amber-800">
+                ? `<div class="p-2.5 bg-amber-50 rounded-lg text-xs text-amber-800">
                         <div class="font-bold">⚠️ 注意事項</div>
                         <ul class="mt-1 ml-4 list-disc space-y-0.5">${warningItems.map(w => `<li>${w}</li>`).join('')}</ul>
                    </div>`
@@ -2687,8 +2687,8 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             // 其餘全部降級成同等視覺權重的純文字，才不會每張卡片都掛滿一堆搶眼的圖示/圓角標籤
             const lastEntryInfo = getLastEntryInfo(item);
             const lastEntryText = lastEntryInfo ? `<span class="text-amber-700 font-bold">${escapeHtml(lastEntryInfo)}</span>` : '';
-            // 雨天室內備案（正面訊息，不是警示）：維持中性文字，不需要圖示
-            const indoorRainNote = (dayIsRainy && isIndoorFriendly(item)) ? `<span class="text-slate-500">雨天備案佳</span>` : '';
+            // 雨天室內備案（正面訊息，不是警示）：用全站代表「正面」的綠色，不需要圖示
+            const indoorRainNote = (dayIsRainy && isIndoorFriendly(item)) ? `<span class="text-[#6b8f71]">雨天備案佳</span>` : '';
 
             // 🔒 這張卡片還會用到的其餘 CSV 欄位，統一跳脫
             const safeName = escapeHtml(item.name);
@@ -2698,13 +2698,22 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             const safeWebsite = escapeHtml(item.website);
             const jsAttrName = escapeJsAttr(item.name); // 給 onclick="...('${jsAttrName}')" 用
 
-            // 📏 時段徽章單獨一行、其餘補充資訊放第二行，並用「・」分隔每一項——原本三個沒有分隔符號的
-            // 純文字擠在同一行、跟徽章黏在一起，讀起來像一整串分不清界線的文字，拆開後每項資訊才看得出各自的邊界
-            const metaLine2 = [
+            // 📏 時段徽章＋補充資訊放同一行，用「・」接時段、「|」分隔各項補充資訊——
+            // 每一項資訊都看得出各自的邊界，不會黏成一整串分不清楚的文字
+            const metaLineRest = [
                 `建議停留 <span class="font-bold text-[#2c5f7c]">${safeStay}</span>`,
                 lastEntryText,
                 indoorRainNote
-            ].filter(Boolean).join('<span class="text-slate-300 mx-0.5">・</span>');
+            ].filter(Boolean).join('<span class="text-[#cbbfa0] mx-1 font-light">|</span>');
+            const metaLine = timeBadge
+                ? `${timeBadge}<span class="text-[#d3c9ad] mx-1">・</span>${metaLineRest}`
+                : metaLineRest;
+
+            // 📌 地圖／官網：改用可以跟卡片其他文字同色系的 SVG 線條圖示，不用會被瀏覽器強制上色的
+            // 彩色 emoji（📍原本是鮮紅色，跟卡片低彩度的暖色調完全衝突）；按鈕尺寸統一跟刪除鈕一樣 32×32px
+            const linkBtnClass = 'w-8 h-8 rounded-lg border border-[#d8cba8] flex items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] transition';
+            const mapIconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
+            const linkIconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
 
             return `
                 <div class="relative bg-[#faf6ee] paper-texture rounded-sm border-2 border-dashed border-[#c9a876] p-4 shadow-sm hover:shadow-md transition duration-300 cursor-grab active:cursor-grabbing"
@@ -2715,29 +2724,28 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                     <div class="flex justify-between items-start gap-3">
                         <div class="flex items-start gap-2 min-w-0">
                             <span class="text-slate-300 text-sm mt-1 select-none" title="拖曳調整順序">⠿</span>
-                            <div class="min-w-0">
-                                <!-- 分類圖示直接放進標題行內（不再是右上角孤立的圓形圖示），
-                                     由左到右的閱讀動線更自然，右上角只留一個刪除鈕 -->
-                                <h4 class="hand text-base font-bold text-slate-800 flex items-center gap-1.5">
-                                    <span>${categoryIcon}</span>${safeName}
-                                </h4>
-                                <p class="text-xs mt-1.5">${timeBadge}</p>
-                                <p class="text-xs text-slate-500 mt-1.5 flex items-center flex-wrap">${metaLine2}</p>
-                            </div>
+                            <h4 class="hand text-base font-bold text-slate-800 flex items-center gap-1.5 min-w-0">
+                                <span>${categoryIcon}</span>${safeName}
+                            </h4>
                         </div>
                         <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-[#c46b5c] hover:bg-[#f6e9e6] hover:text-[#b04938] transition">🗑</button>
                     </div>
-                    ${warningBlock}
-                    <div class="flex items-center gap-3 mt-3 pt-3 border-t border-[#f5ecd9] text-xs text-slate-500">
-                        <span>${safeTicket}・${safeHours || '請見官網'}</span>
-                        <div class="ml-auto flex items-center gap-1.5 shrink-0">
-                            <a href="${getMapUrl(item)}" target="_blank" rel="noopener noreferrer" title="開啟地圖" class="w-[30px] h-[30px] rounded-lg border border-[#d8cba8] flex items-center justify-center text-slate-500 hover:bg-[#f5ecd9] text-sm">📍</a>
-                            <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟官網" class="w-[30px] h-[30px] rounded-lg border border-[#d8cba8] flex items-center justify-center text-slate-500 hover:bg-[#f5ecd9] text-sm">🔗</a>
+                    <!-- 📐 這一整塊統一用 flex-col gap-3，每個區塊間距都精準是 12px（實測驗證過），
+                         不會像各自設 margin/padding 那樣疊加算錯、忽大忽小 -->
+                    <div class="flex flex-col gap-3 mt-3">
+                        <p class="text-xs text-slate-500 flex items-center flex-wrap">${metaLine}</p>
+                        ${warningBlock}
+                        <div class="flex items-center gap-3 pt-3 border-t border-[#f5ecd9]">
+                            <span class="inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-lg bg-[#f5ecd9] text-[#6b5535]">${safeTicket}・${safeHours || '請見官網'}</span>
+                            <div class="ml-auto flex items-center gap-1.5 shrink-0">
+                                <a href="${getMapUrl(item)}" target="_blank" rel="noopener noreferrer" title="開啟地圖" class="${linkBtnClass}">${mapIconSvg}</a>
+                                <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟官網" class="${linkBtnClass}">${linkIconSvg}</a>
+                            </div>
                         </div>
+                        <p class="text-xs text-slate-600 leading-relaxed pt-3 border-t border-[#f5ecd9]">
+                            💡 ${safeReason}
+                        </p>
                     </div>
-                    <p class="text-xs text-slate-600 leading-relaxed mt-3 pt-3 border-t border-[#f5ecd9]">
-                        💡 ${safeReason}
-                    </p>
                     <!-- 🖐️ 手機無法用原生拖曳排序（HTML5 drag-and-drop 觸控裝置大多不支援），
                          這排按鈕才是手機使用者實際會用到的排序方式，特意放大到接近 44px 的觸控友善尺寸。
                          用分隔線把「同天排序」（↑↓）跟「換天」（◀▶）視覺分成兩群，並各自標上極小字說明，
