@@ -14,7 +14,10 @@
           執行」這件事本身——真正該擋這個的是前面已經做的 escapeHtml() 逃逸處理。
         - 但即使某處真的漏 escape、被塞進東西，這個 CSP 仍然擋得住：載入允許清單以外網域的外部
           script（例如攻擊者自己的攻擊腳本）、對允許清單以外網域發送 fetch/XHR（防止把資料偷送到
-          不明網站）、被嵌入別人的網頁當 iframe（frame-ancestors）。屬於「降低傷害」而不是「完全免疫」。
+          不明網站）。屬於「降低傷害」而不是「完全免疫」。
+        - ⚠️ 防止被嵌入別人網頁當 iframe（clickjacking）用的 frame-ancestors 指令，規格明文規定只有透過
+          真正的 HTTP 標頭送出才有效，寫在這種 <meta> 標籤裡瀏覽器會直接忽略；而 GitHub Pages 這類純靜態
+          託管沒辦法自訂 HTTP 標頭，所以這個網頁目前沒有、也沒辦法用這個方式做到防 iframe 嵌入的保護。
     -->
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
@@ -2151,11 +2154,33 @@ ${list}
             document.getElementById('export-modal').classList.add('hidden');
         }
 
-        function copyExportText() {
+        // 複製文字到剪貼簿：優先用現代 Clipboard API（真的能回報成功/失敗），失敗或不支援
+        // （例如非 https、瀏覽器權限政策擋掉）都退回舊的 execCommand 寫法再試一次。
+        // 舊寫法一律回報「成功」不檢查結果，複製真的失敗時使用者會看到假的成功訊息、以為貼得到卻貼不到
+        async function copyTextToClipboard(text) {
+            if (navigator.clipboard?.writeText) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (e) {
+                    console.error('Clipboard writeText failed, falling back to execCommand:', e);
+                }
+            }
+            const temp = document.createElement('textarea');
+            temp.value = text;
+            temp.style.position = 'fixed';
+            temp.style.opacity = '0';
+            document.body.appendChild(temp);
+            temp.select();
+            const success = document.execCommand('copy');
+            document.body.removeChild(temp);
+            return success;
+        }
+
+        async function copyExportText() {
             const textarea = document.getElementById('export-textarea');
-            textarea.select();
-            document.execCommand('copy');
-            showToast('已成功複製表格 Markdown 文字！', true);
+            const success = await copyTextToClipboard(textarea.value);
+            showToast(success ? '已成功複製表格 Markdown 文字！' : '複製失敗，請手動選取文字後自行複製', success);
         }
 
         // 📅 .ics 行事曆匯出：純本地運算，時間直接沿用 computeDaySchedule 算出的預估時段，
@@ -2241,7 +2266,7 @@ ${list}
         // 🔗 行程分享連結：免登入、免後端，把目前的分天結構整包編碼進網址的 # 片段，複製給同行的人
         // 注意：景點 id（例如 csv-attraction-12）是依 CSV 資料列順序產生的，如果之後 CSV 內容或順序改變，
         // 舊的分享連結可能會對不上——這是純前端方案的已知限制，比起導入完整後端已經是很輕量的取捨了
-        function copyShareLink() {
+        async function copyShareLink() {
             pruneDayPlan();
             if (myItineraryIds.size === 0) {
                 showToast('請先加入至少一個景點，才能產生分享連結', false);
@@ -2251,15 +2276,13 @@ ${list}
             const encoded = btoa(encodeURIComponent(JSON.stringify(state)));
             const shareUrl = `${location.origin}${location.pathname}#share=${encoded}`;
 
-            const temp = document.createElement('textarea');
-            temp.value = shareUrl;
-            temp.style.position = 'fixed';
-            temp.style.opacity = '0';
-            document.body.appendChild(temp);
-            temp.select();
-            document.execCommand('copy');
-            document.body.removeChild(temp);
-            showToast('分享連結已複製！貼給同行的人，打開就能選擇匯入這份行程', true);
+            const success = await copyTextToClipboard(shareUrl);
+            if (success) {
+                showToast('分享連結已複製！貼給同行的人，打開就能選擇匯入這份行程', true);
+            } else {
+                // 自動複製失敗時，用 prompt 把網址完整顯示出來，使用者還是能自己手動選取複製
+                prompt('自動複製失敗，請手動複製以下網址：', shareUrl);
+            }
         }
 
         // 頁面載入時檢查網址是否帶著分享連結，有的話詢問使用者是否要匯入（會覆蓋目前的行程，所以一定要先確認）
