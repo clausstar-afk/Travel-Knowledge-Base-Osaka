@@ -293,11 +293,10 @@
             <div class="p-6 overflow-y-auto space-y-4">
                 <p class="text-xs text-slate-500">已自動為您整理選取景點的表格資訊，您可以直接複製或匯出：</p>
                 <!-- 表格預覽 Table Format -->
-                <!-- 📱 手機版重點修正：table 原本是 w-full，在 overflow-x-auto 容器裡永遠不會比容器寬，
-                     於是瀏覽器只能把每欄硬擠窄、文字被迫換成 3-4 行，完全不會觸發橫向捲動。
-                     改成 min-w-[640px] 讓表格保有足夠寬度，配合 whitespace-nowrap，容器才會真的滑動而不是擠壓文字 -->
+                <!-- 營業時間併入「景點名稱」欄位下方的小字附註（跟卡片內「主要資訊＋次要小字」同一套模式），
+                     表格從 6 欄減到 5 欄，實測桌面寬度的 Modal 不再需要橫向捲動 -->
                 <div class="overflow-x-auto border border-[#d8cba8] rounded-xl">
-                    <table class="min-w-[640px] text-left text-xs text-slate-600">
+                    <table class="w-full text-left text-xs text-slate-600">
                         <thead class="bg-[#f5ecd9] text-slate-800 font-bold border-b border-[#d8cba8]">
                             <tr>
                                 <th class="p-3 whitespace-nowrap">天數</th>
@@ -305,7 +304,6 @@
                                 <th class="p-3 whitespace-nowrap">地區</th>
                                 <th class="p-3 whitespace-nowrap">預估時段</th>
                                 <th class="p-3 whitespace-nowrap">門票</th>
-                                <th class="p-3 whitespace-nowrap">營業時間</th>
                             </tr>
                         </thead>
                         <tbody id="export-table-body" class="divide-y divide-[#e8dcc8]">
@@ -313,17 +311,19 @@
                         </tbody>
                     </table>
                 </div>
-                <!-- 複製與純文字 Markdown 區塊 -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Markdown 表格格式純文字：</label>
-                    <textarea id="export-textarea" readonly class="w-full h-32 p-3 text-xs bg-[#f5ecd9] border border-[#d8cba8] rounded-xl font-mono focus:outline-none"></textarea>
-                </div>
+                <!-- 複製與純文字 Markdown 區塊：預設收合，需要的人才點開，不跟上面的表格重複佔版面 -->
+                <details>
+                    <summary class="text-xs font-bold text-[#37505f] cursor-pointer select-none py-1 list-none [&::-webkit-details-marker]:hidden">▶ 查看 Markdown 純文字格式</summary>
+                    <textarea id="export-textarea" readonly class="w-full h-32 p-3 mt-2 text-xs bg-[#f5ecd9] border border-[#d8cba8] rounded-xl font-mono focus:outline-none"></textarea>
+                </details>
             </div>
             <div class="px-6 py-4 bg-[#f5ecd9] border-t border-[#e8dcc8] flex items-center justify-end gap-3 flex-wrap">
                 <!-- 📥 下載行程表：把原本分開的「下載日曆」按鈕跟 .md／.csv 匯出合併成一個按鈕＋格式選單，
-                     複製相關的按鈕（分享連結／表格文字）維持不變，只有「下載」這件事合併起來 -->
+                     複製相關的按鈕（分享連結／表格文字）維持不變，只有「下載」這件事合併起來。
+                     三顆按鈕統一改用卡片既有的主藍色家族（不再借用航班藍灰／Kinopio 紫，紫色維持只代表 AI 功能），
+                     「複製表格文字」補上圖標後三顆都是「圖標＋文字」組合，寬度自然接近，不用額外撐寬度 -->
                 <div class="relative">
-                    <button onclick="toggleDownloadMenu(event)" class="px-4 py-2 text-xs font-bold text-white bg-[#5c7a8a] hover:bg-[#37505f] rounded-xl transition shadow-sm">
+                    <button onclick="toggleDownloadMenu(event)" class="px-4 py-2 text-xs font-bold text-white bg-[#2c5f7c] hover:bg-[#234c66] rounded-xl transition shadow-sm">
                         📥 下載行程表 ▾
                     </button>
                     <div id="download-format-menu" class="hidden absolute bottom-full mb-1 right-0 z-20 bg-[#faf6ee] border border-[#c3d3d9] rounded-xl shadow-lg overflow-hidden w-44">
@@ -332,11 +332,11 @@
                         <button onclick="downloadICS()" class="w-full text-left px-4 py-2.5 text-xs text-[#37505f] hover:bg-[#eef3f5]">📅 日曆（.ics）</button>
                     </div>
                 </div>
-                <button onclick="copyShareLink()" class="px-4 py-2 text-xs font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-xl transition shadow-sm">
+                <button onclick="copyShareLink()" class="px-4 py-2 text-xs font-bold text-white bg-[#234c66] hover:bg-[#1a3a4a] rounded-xl transition shadow-sm">
                     🔗 複製分享連結
                 </button>
-                <button onclick="copyExportText()" class="px-4 py-2 text-xs font-bold text-white bg-[#2c5f7c] hover:bg-[#234c66] rounded-xl transition shadow-sm">
-                    複製表格文字
+                <button onclick="copyExportText()" class="px-4 py-2 text-xs font-bold text-white bg-[#234c66] hover:bg-[#1a3a4a] rounded-xl transition shadow-sm">
+                    📋 複製表格文字
                 </button>
                 <button onclick="closeExportModal()" class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-[#d8cba8] rounded-xl transition">
                     關閉
@@ -2103,18 +2103,18 @@ ${list}
             const totalRows = groups.reduce((sum, g) => sum + g.rows.length, 0);
 
             if (totalRows === 0) {
-                tableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">目前尚未選取任何景點行程</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">目前尚未選取任何景點行程</td></tr>`;
                 textarea.value = "尚未選取景點行程。";
             } else {
-                // 渲染 HTML 表格：同一天用 rowspan 合併「天數」欄位到第一列，不會每一列都重複寫一次 Day N
+                // 渲染 HTML 表格：同一天用 rowspan 合併「天數」欄位到第一列，不會每一列都重複寫一次 Day N。
+                // 營業時間併入「景點名稱」欄位下方的小字，表格少一欄，桌面寬度不再需要橫向捲動
                 tableBody.innerHTML = groups.map(({ dayLabel, rows }) => rows.map(({ item, timeLabel, warnText }, idx) => `
                     <tr class="hover:bg-[#f5ecd9]">
                         ${idx === 0 ? `<td class="p-3 font-bold text-[#2c5f7c] align-top whitespace-nowrap" rowspan="${rows.length}">${escapeHtml(dayLabel)}</td>` : ''}
-                        <td class="p-3 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(item.name)}${warnText ? `<div class="text-[11px] font-normal text-amber-600 mt-0.5 whitespace-normal">${escapeHtml(warnText)}</div>` : ''}</td>
+                        <td class="p-3 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(item.name)}<div class="text-[11px] font-normal text-slate-400 mt-0.5 whitespace-normal">營業時間 ${escapeHtml(item.hours)}</div>${warnText ? `<div class="text-[11px] font-normal text-amber-600 mt-0.5 whitespace-normal">${escapeHtml(warnText)}</div>` : ''}</td>
                         <td class="p-3 whitespace-nowrap">${escapeHtml(item.area)}</td>
                         <td class="p-3 whitespace-nowrap">${escapeHtml(timeLabel)}</td>
                         <td class="p-3 whitespace-nowrap">${escapeHtml(item.ticket)}</td>
-                        <td class="p-3 whitespace-nowrap">${escapeHtml(item.hours)}</td>
                     </tr>
                 `).join('')).join('');
 
