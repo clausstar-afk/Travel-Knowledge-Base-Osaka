@@ -2856,7 +2856,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                 timelineHTML += `
                     <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4">
                         <div class="text-[11px] font-bold text-[#9678a5] mb-1">🍄 Kinopio 的行程小提醒</div>
-                        <p class="text-sm text-[#2e2639] leading-relaxed">🍄 Kinopio 說：${escapeHtml(currentAINarrative.opening)}</p>
+                        <p class="text-sm text-[#2e2639] leading-relaxed">${escapeHtml(currentAINarrative.opening)}</p>
                         ${isStale ? '<p class="text-[11px] text-amber-500 mt-2">行程內容有更新，按上方按鈕可重新生成介紹</p>' : ''}
                     </div>
                 `;
