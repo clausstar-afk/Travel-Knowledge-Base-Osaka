@@ -195,7 +195,7 @@
                         <svg class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                         </svg>
-                        <input type="text" id="search-input" oninput="handleSearch()" onkeydown="if(event.key==='Enter') handleAISearch()" placeholder="搜尋關鍵字，或描述你想要的景點後按 Enter 讓 Kinopio 找"
+                        <input type="text" id="search-input" oninput="handleSearch()" onkeydown="if(event.key==='Enter' && !event.isComposing) handleAISearch()" placeholder="搜尋關鍵字，或描述你想要的景點後按 Enter 讓 Kinopio 找"
                         class="w-full pl-10 pr-28 py-2.5 text-sm bg-[#faf6ee] border border-[#d8cba8] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#3d7290] focus:border-transparent transition shadow-sm">
                         <!-- 🍄 Kinopio：這個 App 的 AI 助理角色，帶路的嚮導人設。按鈕維持圖示為主（空間有限），
                              完整名字放在 title 提示跟下方說明文字裡 -->
@@ -390,7 +390,7 @@
         <div id="chat-suggestions" class="px-4 pb-2 flex flex-wrap gap-1.5 shrink-0"></div>
         <div class="p-3 border-t border-[#e3dae8] flex items-center gap-2 shrink-0">
             <input type="text" id="chat-input" placeholder="輸入旅遊相關問題..."
-                onkeydown="if(event.key==='Enter'){event.preventDefault(); sendChatMessage();}"
+                onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); sendChatMessage();}"
                 class="flex-1 min-w-0 px-3 py-2 text-sm bg-white border border-[#cab8d4] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#9678a5]">
             <button onclick="sendChatMessage()" id="chat-send-btn"
                 class="shrink-0 w-9 h-9 rounded-xl bg-[#6b5a7a] hover:bg-[#564865] text-white flex items-center justify-center transition">➤</button>
@@ -882,6 +882,18 @@
         }
 
         // 初始化 Initialization
+        // ⌨️ 按 Esc 關閉目前開著的浮動視窗（聊天面板／匯出/行前清單 Modal），符合桌面使用者的直覺操作習慣。
+        // 依序檢查：哪個視窗是開著的就關哪個，一次只關一層，不會連環關掉底下其他還開著的東西
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            const exportModal = document.getElementById('export-modal');
+            const checklistModal = document.getElementById('checklist-modal');
+            const chatPanel = document.getElementById('chat-panel');
+            if (!exportModal.classList.contains('hidden')) closeExportModal();
+            else if (!checklistModal.classList.contains('hidden')) closeChecklistModal();
+            else if (!chatPanel.classList.contains('hidden')) toggleChatPanel();
+        });
+
         document.addEventListener('DOMContentLoaded', async () => {
             loadSavedItinerary();
             loadDayPlan();
