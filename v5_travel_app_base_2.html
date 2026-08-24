@@ -1852,9 +1852,31 @@ ${list}
             '這個季節去大阪要準備什麼？',
             '大阪交通票券怎麼選比較划算？'
         ];
+        // 從目前實際載入的景點資料庫，即時整理出「有哪些分類」——category 欄位可能是逗號分隔的多個分類
+        // （例如「主題樂園,自然景觀」），拆開後去重。用即時抓取而不是寫死清單，之後 Google Sheet 裡
+        // 的分類增減，聊天功能的限制範圍會自動跟著更新，不用回來改程式碼
+        function getAttractionCategories() {
+            const cats = new Set();
+            attractionsData.forEach(item => {
+                (item.category || '').split(',').map(c => c.trim()).filter(Boolean).forEach(c => cats.add(c));
+            });
+            return [...cats];
+        }
+
         // 系統提示詞：把回答範圍限制在旅遊相關、並提醒事實性資訊（營業時間/價格）容易過時，
-        // 呼應這個網站一貫的原則——AI 負責寫感受/建議，不負責當作事實的最終依據
-        const CHAT_SYSTEM_PROMPT = '你是「Kinopio」🍄，旅圖知情所這個大阪自由行規劃網站裡的旅遊助理。只回答旅遊規劃相關的問題（景點、交通、天氣、行程安排、文化習慣、打包建議等），如果使用者問跟旅遊無關的問題，禮貌地引導他們問旅遊相關的事。回答一律使用繁體中文，語氣親切但精簡，不要長篇大論。遇到需要精確數字的事實性資訊（例如確切營業時間、票價、匯率），要提醒使用者以官方公告或現場資訊為準，不要武斷給出可能過時或不準確的數字。';
+        // 呼應這個網站一貫的原則——AI 負責寫感受/建議，不負責當作事實的最終依據。
+        // 另外兩條是實測發現的問題才加的：(1) AI 會自己提議「幫你加入行程表」，但聊天功能完全沒有
+        // 串接任何能真的操作行程表的機制，這種話是空頭承諾，必須禁止；(2) AI 推薦景點時完全沒有
+        // 參考過網站自己的景點資料庫，會講出資料庫裡根本沒有的景點，用即時抓到的分類清單把它收斂回來
+        function buildChatSystemPrompt() {
+            const categories = getAttractionCategories();
+            const categoryLine = categories.length > 0
+                ? `推薦景點時，只能推薦屬於以下分類的景點類型，不要提到清單以外的景點類型：${categories.join('、')}。`
+                : '';
+            return '你是「Kinopio」🍄，旅圖知情所這個大阪自由行規劃網站裡的旅遊助理。只回答旅遊規劃相關的問題（景點、交通、天氣、行程安排、文化習慣、打包建議等），如果使用者問跟旅遊無關的問題，禮貌地引導他們問旅遊相關的事。回答一律使用繁體中文，語氣親切但精簡，不要長篇大論。遇到需要精確數字的事實性資訊（例如確切營業時間、票價、匯率），要提醒使用者以官方公告或現場資訊為準，不要武斷給出可能過時或不準確的數字。'
+                + categoryLine
+                + '你沒有能力真的操作使用者的行程表——無法真的把景點加入行程、無法修改或排序行程。絕對不要說「需要我幫你加入行程表嗎」之類的話，也不要暗示你能執行這類動作，你只能用文字給建議，實際操作要請使用者自己手動進行。';
+        }
 
         function toggleChatPanel() {
             const panel = document.getElementById('chat-panel');
@@ -1932,7 +1954,7 @@ ${list}
             if (chatHistory.length > 8) chatHistory = chatHistory.slice(-8); // 只保留最近幾輪，控制單次呼叫的內容量
 
             setChatLoading(true);
-            const messages = [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...chatHistory];
+            const messages = [{ role: 'system', content: buildChatSystemPrompt() }, ...chatHistory];
 
             // 雙模型備援：主要模型失敗（額度用完/當下壅塞/其他錯誤）就自動改打備援模型再試一次，
             // 使用者完全不會感覺到中間切換過模型，兩個都失敗才會看到錯誤訊息
