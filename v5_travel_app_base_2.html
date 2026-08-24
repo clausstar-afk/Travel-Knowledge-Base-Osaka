@@ -440,6 +440,7 @@
         let unassignedIds = [];        // 已加入行程但尚未被拖進任何一天的景點 id
         let draggedItemId = null;      // 目前正在被拖曳的景點 id
         let dayStartTimes = {};        // { 1: '09:30', 2: '10:00', ... } 每天的出發時間，使用者可自行調整
+        let accommodationName = '';    // 🏨 住宿名稱（選填，純文字），用來在每天首尾補上「查看交通方式」連結
 
         // 🌤️ 大阪天氣預報（Open-Meteo，免金鑰、免費），確定去程日期後自動查詢
         let weatherByDate = {};        // { 'YYYY-MM-DD': { code, max, min } }
@@ -901,7 +902,7 @@
 
         // 讀取 LocalStorage 保留的「分天 + 拖拉排序」計畫
         function loadDayPlan() {
-            dayCount = 1; dayPlan = [[]]; unassignedIds = []; dayStartTimes = {};
+            dayCount = 1; dayPlan = [[]]; unassignedIds = []; dayStartTimes = {}; accommodationName = '';
             try {
                 let saved = localStorage.getItem(scopedKey('travel_kb_dayplan'));
                 if (saved === null && getStorageScope() === 'guest') {
@@ -913,6 +914,7 @@
                     dayPlan = Array.isArray(parsed.dayPlan) && parsed.dayPlan.length > 0 ? parsed.dayPlan : [[]];
                     unassignedIds = Array.isArray(parsed.unassignedIds) ? parsed.unassignedIds : [];
                     dayStartTimes = parsed.dayStartTimes && typeof parsed.dayStartTimes === 'object' ? parsed.dayStartTimes : {};
+                    accommodationName = typeof parsed.accommodationName === 'string' ? parsed.accommodationName : '';
                 }
             } catch (e) {
                 console.error("LocalStorage load error (dayplan):", e);
@@ -922,10 +924,17 @@
         // 儲存「分天 + 拖拉排序」計畫至 LocalStorage（存進目前登入帳號自己的範圍）
         function saveDayPlan() {
             try {
-                localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes }));
+                localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes, accommodationName }));
             } catch (e) {
                 console.error("LocalStorage save error (dayplan):", e);
             }
+        }
+
+        // 🏨 使用者填寫/清空住宿名稱時呼叫：存起來 + 重新渲染時間軸（讓每天首尾的交通連結立刻反映最新輸入）
+        function setAccommodationName(value) {
+            accommodationName = value.trim();
+            saveDayPlan();
+            generateDynamicTimeline();
         }
 
         // 讀取 LocalStorage 保留的「已查詢航班」資訊（去程/回程），避免重新整理後航班卡片憑空消失
@@ -1496,12 +1505,16 @@ ${list}
             return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery.trim())}`;
         }
 
-        // 🚃 相鄰兩站的「查看交通方式」連結：不需要金鑰、不用額外呼叫任何 API，
-        // Google 地圖的路線網址本身就能吃地名文字（不用經緯度），直接帶起點/終點開新分頁讓 Google 幫忙查轉乘
-        function getTransitDirectionsUrl(fromItem, toItem) {
-            const origin = `${fromItem.name} 大阪`;
-            const destination = `${toItem.name} 大阪`;
+        // 🚃 兩個地名之間的「查看交通方式」連結：不需要金鑰、不用額外呼叫任何 API，
+        // Google 地圖的路線網址本身就能吃地名文字（不用經緯度、不用自己判斷在哪一區），
+        // 直接帶起點/終點開新分頁讓 Google 幫忙查轉乘——景點對景點、住宿對景點都共用這個
+        function buildDirectionsUrl(originName, destName) {
+            const origin = `${originName} 大阪`;
+            const destination = `${destName} 大阪`;
             return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=transit`;
+        }
+        function getTransitDirectionsUrl(fromItem, toItem) {
+            return buildDirectionsUrl(fromItem.name, toItem.name);
         }
 
         function renderCards() {
@@ -2611,6 +2624,14 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                             <button onclick="setDayCount(${dayCount + 1})" class="w-6 h-6 rounded-lg bg-[#faf6ee] shadow-sm text-slate-600 font-bold text-sm hover:bg-[#f5ecd9]" ${dayCount >= 14 ? 'disabled' : ''}>＋</button>
                         </div>
                     </div>
+                    <!-- 🏨 住宿名稱（選填）：填了之後，每天第一站前面／最後一站後面會補上「查看交通方式」連結，
+                         純文字直接帶進 Google 地圖路線網址，不用另外判斷飯店在哪一區 -->
+                    <div class="flex items-center gap-2 bg-[#f5ecd9] border border-[#e8dcc8] rounded-xl px-3 py-2">
+                        <span class="text-xs font-bold text-slate-600 shrink-0">🏨 住宿地點</span>
+                        <input type="text" value="${escapeHtml(accommodationName)}" placeholder="輸入飯店名稱，選填"
+                            onchange="setAccommodationName(this.value)"
+                            class="flex-1 min-w-0 px-3 py-1.5 text-xs bg-[#faf6ee] border border-[#c3d3d9] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                    </div>
             `;
 
             // 🛡️ 防呆：比對「手動設定的總天數」跟「去程/回程航班暗示的實際天數」是否一致，不一致時提示但不強制覆蓋
@@ -2726,7 +2747,30 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                              ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, ${d})">
                             ${dayItems.length === 0
                                 ? `<div class="text-xs text-slate-300 italic py-3 pl-3">（空）把景點拖曳到這裡</div>`
-                                : dayItems.map((item, idx) => {
+                                : (() => {
+                                    // 🏨 住宿地點的「查看交通方式」連結：Day 1 第一站已經有航班卡片當起點錨點、
+                                    // 最後一天最後一站如果有查回程航班也已經有航班卡片當終點錨點，這兩種情況不重複顯示
+                                    const fromAccommodationHTML = (accommodationName && !(d === 1 && currentArrivalFlight)) ? `
+                                        <div class="flex items-center gap-2 flex-wrap pl-1 text-[11px] text-slate-500 font-medium">
+                                            <span class="text-[#5c8aa0]">🏨</span>
+                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">從「${escapeHtml(accommodationName)}」出發</span>
+                                            <a href="${buildDirectionsUrl(accommodationName, dayItems[0].name)}" target="_blank" rel="noopener noreferrer"
+                                               class="inline-flex items-center gap-1 font-bold text-[#5c7a8a] bg-[#eef3f5] hover:bg-[#dde7ea] border border-[#c3d3d9] rounded-full px-2.5 py-1 transition">
+                                                🔍 查看交通方式<span class="text-slate-400 font-normal">↗</span>
+                                            </a>
+                                        </div>
+                                    ` : '';
+                                    const toAccommodationHTML = (accommodationName && !(d === dayCount && currentDepartureFlight)) ? `
+                                        <div class="flex items-center gap-2 flex-wrap pl-1 text-[11px] text-slate-500 font-medium">
+                                            <span class="text-[#5c8aa0]">⬇️</span>
+                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🏨 返回「${escapeHtml(accommodationName)}」</span>
+                                            <a href="${buildDirectionsUrl(dayItems[dayItems.length - 1].name, accommodationName)}" target="_blank" rel="noopener noreferrer"
+                                               class="inline-flex items-center gap-1 font-bold text-[#5c7a8a] bg-[#eef3f5] hover:bg-[#dde7ea] border border-[#c3d3d9] rounded-full px-2.5 py-1 transition">
+                                                🔍 查看交通方式<span class="text-slate-400 font-normal">↗</span>
+                                            </a>
+                                        </div>
+                                    ` : '';
+                                    const itemsHTML = dayItems.map((item, idx) => {
                                     const cardHTML = renderDayItemCard(item, d, idx, dayItems.length, schedule[idx], dayDate, dayIsRainy);
                                     const transitMin = schedule[idx].transitToNextMin;
                                     // 🚃 卡片之間顯示區域距離啟發式估算出的交通時間，直接回應「不知道該預留多少交通時間」的痛點
@@ -2743,7 +2787,9 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                                         </div>
                                     ` : '';
                                     return cardHTML + connectorHTML;
-                                }).join('')}
+                                    }).join('');
+                                    return fromAccommodationHTML + itemsHTML + toAccommodationHTML;
+                                })()}
                         </div>
                     </div>
                 `;
