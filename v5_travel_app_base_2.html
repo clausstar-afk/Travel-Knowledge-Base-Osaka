@@ -54,7 +54,10 @@
         }
         /* 🍄 Kinopio 聊天按鈕：清晰的實色細環貼著邊緣（0 模糊，不是大片暈開），
            顏色在淺藍白↔淺紫之間緩慢切換，外層再補一點點柔光增加立體感；按鈕底色加深來襯托 */
-        #chat-fab-wrap { position: fixed; bottom: 6rem; right: 1.5rem; z-index: 40; width: 3.75rem; height: 3.75rem; }
+        /* 改到左下角：右下角跟卡片內的刪除鈕／地圖官網連結按鈕同一側，手機捲動時常常疊在一起，
+           點擊誤觸到聊天按鈕（實測過：刪除鈕位置點下去，實際命中的是這顆浮動按鈕）。全站目前沒有
+           任何操作型按鈕聚集在左側，改到左下角可以完全避開這個衝突 */
+        #chat-fab-wrap { position: fixed; bottom: 6rem; left: 1.5rem; z-index: 40; width: 3.75rem; height: 3.75rem; }
         #chat-fab { animation: kinopio-rim-glow 3s ease-in-out infinite; }
         @keyframes kinopio-rim-glow {
             0%, 100% {
@@ -381,7 +384,7 @@
             title="問 Kinopio 旅遊問題">🍄</button>
     </div>
 
-    <div id="chat-panel" class="hidden fixed bottom-24 right-6 z-40 w-[min(360px,calc(100vw-2rem))] h-[min(520px,calc(100vh-8rem))] bg-[#faf6ee] paper-texture rounded-3xl shadow-2xl border border-[#e3dae8] flex flex-col overflow-hidden">
+    <div id="chat-panel" class="hidden fixed bottom-24 left-6 z-40 w-[min(360px,calc(100vw-2rem))] h-[min(520px,calc(100vh-8rem))] bg-[#faf6ee] paper-texture rounded-3xl shadow-2xl border border-[#e3dae8] flex flex-col overflow-hidden">
         <div class="px-4 py-3 bg-[#6b5a7a] text-white flex items-center justify-between shrink-0">
             <h3 class="hand text-sm font-bold flex items-center gap-2"><span>🍄</span> 問 Kinopio 旅遊問題</h3>
             <button onclick="toggleChatPanel()" class="text-white/80 hover:text-white text-lg font-bold px-1">✕</button>
@@ -1669,7 +1672,7 @@ ${list}
                     <div>
                         <!-- 1. 頂部圖片區：從 h-64(256px) 瘦身到 h-40(160px)，這是整張卡片最大的省高度來源 -->
                         <div class="relative h-40 overflow-hidden bg-[#e8dcc8]">
-                            <img src="${safeImage}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover">
+                            <img src="${safeImage}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="this.style.display='none'">
                             <!-- Scrim Overlay 漸層遮罩 -->
                             <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
                             <!-- 左上角：分類標籤群 -->
