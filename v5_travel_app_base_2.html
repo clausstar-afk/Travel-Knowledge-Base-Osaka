@@ -2032,7 +2032,7 @@ ${list}
                 renderChatMessage('assistant', result.reply);
                 chatHistory.push({ role: 'assistant', content: result.reply });
             } else if (result.isQuota) {
-                renderQuotaExceededMessage('⚠️ 今天全站的免費提問次數已經被用完了，明天再來問我，或是先試試下面的 AI 語意搜尋找景點！', text);
+                renderQuotaExceededMessage('⚠️ Kinopio 現在有點塞車，晚點再試一次，或先讓 Kinopio 用語意搜尋幫你找景點！', text);
             } else {
                 renderChatMessage('assistant', '⚠️ 連線好像出了點問題，請稍後再試一次。');
             }
@@ -2040,12 +2040,13 @@ ${list}
         }
 
         // 額度用完（不管是個人每日上限還是全站共用額度）時的統一處理：顯示原因，
-        // 並在建議清單那個位置放一顆「改用 AI 語意搜尋」按鈕，把使用者導去還有額度的 Gemini 搜尋功能，
+        // 並在建議清單那個位置放一顆按鈕，把使用者導去還有額度的 Kinopio 語意搜尋功能（搜尋列上那顆
+        // 按鈕本來就只寫「Kinopio」，這裡文字要一致使用者才認得出是同一個東西，不要另外發明「AI 語意搜尋」的說法）
         // 不要讓對話卡在死路——把剛剛問過的內容直接帶過去，使用者不用重打一次
         function renderQuotaExceededMessage(message, lastQuestion) {
             renderChatMessage('assistant', message);
             const box = document.getElementById('chat-suggestions');
-            box.innerHTML = `<button onclick="redirectToAISearch('${escapeJsAttr(lastQuestion)}')" class="text-[11px] font-bold text-[#6b5a7a] bg-[#f2eef4] hover:bg-[#e3dae8] border border-[#e3dae8] rounded-full px-3 py-1.5 transition">🔍 改用 AI 語意搜尋景點</button>`;
+            box.innerHTML = `<button onclick="redirectToAISearch('${escapeJsAttr(lastQuestion)}')" class="text-[11px] font-bold text-[#6b5a7a] bg-[#f2eef4] hover:bg-[#e3dae8] border border-[#e3dae8] rounded-full px-3 py-1.5 transition">🔍 讓 Kinopio 找景點</button>`;
         }
 
         // 關閉聊天面板、切到「所有景點」頁籤，把剛剛問 Kinopio 的內容帶進 AI 搜尋框直接幫忙找
