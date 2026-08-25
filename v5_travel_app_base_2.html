@@ -523,6 +523,24 @@
         const OPENROUTER_CHAT_MODEL_PRIMARY = 'google/gemma-4-26b-a4b-it:free';
         const OPENROUTER_CHAT_MODEL_FALLBACK = 'google/gemma-4-31b-it:free';
 
+        // 🚦 每個瀏覽器每天最多問 Kinopio 幾次：免費額度是「整個帳號」共用，尖峰時段少數人問太多次
+        // 會害其他人整天都問不了。這個上限沒辦法增加總額度，只是讓大家平均分配，減少被少數人用光的機率。
+        const CHAT_DAILY_LIMIT = 5;
+        function getChatDailyState() {
+            const today = formatDateISO(new Date());
+            try {
+                const saved = JSON.parse(localStorage.getItem('travel_kb_chat_daily') || 'null');
+                if (saved && saved.date === today) return saved;
+            } catch (e) {}
+            return { date: today, count: 0 };
+        }
+        function incrementChatDailyCount() {
+            const state = getChatDailyState();
+            state.count += 1;
+            try { localStorage.setItem('travel_kb_chat_daily', JSON.stringify(state)); } catch (e) {}
+            return state.count;
+        }
+
         // ⚠️ 重要提醒：這是純前端網頁，API Key 寫在這裡任何人按「檢查」都看得到。
         // 這對正式商業產品是大忌，但對免費額度僅600次/月的學生demo可接受風險。
         // 記得換成你自己在 RapidAPI 重新產生的 Key，不要沿用之前對話裡曝光過的那組。
@@ -1982,6 +2000,16 @@ ${list}
             const input = document.getElementById('chat-input');
             const text = (presetText ?? input.value).trim();
             if (!text) return;
+
+            // 個人每日上限先擋，連 API 都不用打——避免尖峰時段少數人一口氣把全站共用額度用光
+            if (getChatDailyState().count >= CHAT_DAILY_LIMIT) {
+                document.getElementById('chat-suggestions').innerHTML = '';
+                input.value = '';
+                renderChatMessage('user', text);
+                renderQuotaExceededMessage(`⚠️ 你今天已經問過 ${CHAT_DAILY_LIMIT} 次囉，明天再回來問我吧！`, text);
+                return;
+            }
+
             document.getElementById('chat-suggestions').innerHTML = ''; // 送出第一則訊息後就收起建議清單，避免畫面一直卡著
             input.value = '';
             renderChatMessage('user', text);
@@ -2000,14 +2028,35 @@ ${list}
             }
 
             if (result.ok) {
+                incrementChatDailyCount();
                 renderChatMessage('assistant', result.reply);
                 chatHistory.push({ role: 'assistant', content: result.reply });
             } else if (result.isQuota) {
-                renderChatMessage('assistant', '⚠️ 今天的免費提問次數已經用完了，請明天再來問我！');
+                renderQuotaExceededMessage('⚠️ 今天全站的免費提問次數已經被用完了，明天再來問我，或是先試試下面的 AI 語意搜尋找景點！', text);
             } else {
                 renderChatMessage('assistant', '⚠️ 連線好像出了點問題，請稍後再試一次。');
             }
             setChatLoading(false);
+        }
+
+        // 額度用完（不管是個人每日上限還是全站共用額度）時的統一處理：顯示原因，
+        // 並在建議清單那個位置放一顆「改用 AI 語意搜尋」按鈕，把使用者導去還有額度的 Gemini 搜尋功能，
+        // 不要讓對話卡在死路——把剛剛問過的內容直接帶過去，使用者不用重打一次
+        function renderQuotaExceededMessage(message, lastQuestion) {
+            renderChatMessage('assistant', message);
+            const box = document.getElementById('chat-suggestions');
+            box.innerHTML = `<button onclick="redirectToAISearch('${escapeJsAttr(lastQuestion)}')" class="text-[11px] font-bold text-[#6b5a7a] bg-[#f2eef4] hover:bg-[#e3dae8] border border-[#e3dae8] rounded-full px-3 py-1.5 transition">🔍 改用 AI 語意搜尋景點</button>`;
+        }
+
+        // 關閉聊天面板、切到「所有景點」頁籤，把剛剛問 Kinopio 的內容帶進 AI 搜尋框直接幫忙找
+        function redirectToAISearch(query) {
+            toggleChatPanel();
+            switchTab('all');
+            const searchInput = document.getElementById('search-input');
+            searchInput.value = query || '';
+            searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            searchInput.focus();
+            if (query) handleAISearch();
         }
 
         // 匯出行程 Modal
