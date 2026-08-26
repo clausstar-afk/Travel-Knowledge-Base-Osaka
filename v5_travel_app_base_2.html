@@ -289,6 +289,12 @@
                     🍄 讓 Kinopio 重新幫你寫行程
                 </button>
             </div>
+            <!-- 🩺 行程健檢：獨立一顆按鈕、隨時可按，不設「確認行程」這種全站沒有先例的關卡，
+                 邏輯比照上面的敘事按鈕（有沒有東西可以處理由函式內部擋，不是靠按鈕本身鎖住） -->
+            <button onclick="runHealthCheck()" id="health-check-btn"
+                class="mt-2 w-full px-5 py-2.5 text-sm font-bold text-[#6b5a7a] bg-[#faf6ee] hover:bg-[#f2eef4] border border-[#cab8d4] rounded-xl transition">
+                🩺 幫我健檢行程
+            </button>
         </div>
 
         <!-- AI 智能時間軸區塊 (新增) -->
@@ -489,6 +495,11 @@
         let currentDepartureQueryDate = null; // 回程查詢時輸入的日期，用來限制去程日期不能選更晚
         let currentAINarrative = null;     // ✨ AI生成的行程開場白（含每天的小語）
         let isGeneratingNarrative = false; // ✨ 是否正在呼叫AI（用來顯示載入動畫）
+
+        // 🩺 行程健檢：{ issues: string[]（規則引擎抓到的事實）, summary: string（Kinopio 潤飾過的文字）, snapshot }
+        let currentHealthCheck = null;
+        let isRunningHealthCheck = false;
+        let hasNudgedHealthCheck = false; // 避免「所有景點都排定」這個狀態的主動提醒 Toast 重複跳出
 
         // 🗓️ 手動分天 + 拖拉排序 狀態
         let dayCount = 1;              // 使用者設定的行程總天數
@@ -1318,6 +1329,7 @@
             else dayPlan[dayIndex - 1].push(draggedItemId);
             draggedItemId = null;
             saveDayPlan();
+            maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
@@ -1332,6 +1344,7 @@
             list.splice(targetIdx === -1 ? list.length : targetIdx, 0, draggedItemId);
             draggedItemId = null;
             saveDayPlan();
+            maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
@@ -2599,6 +2612,10 @@ ${list}
             // 🍄 AI 開場白不屬於任何帳號範圍、只存在記憶體裡，切換身份後對舊帳號的行程內容已經不對，直接清空
             currentAINarrative = null;
             isGeneratingNarrative = false;
+            // 🩺 行程健檢結果同理，不屬於任何帳號範圍，切換身份後直接清空、提醒狀態也一併重置
+            currentHealthCheck = null;
+            isRunningHealthCheck = false;
+            hasNudgedHealthCheck = false;
 
             updateCounts();
             renderCards();
@@ -2734,6 +2751,114 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             return JSON.stringify({ dayCount, dayPlan, unassigned: [...unassignedIds].sort() });
         }
 
+        // 🩺 行程健檢：規則引擎負責「有沒有問題」，重用 computeDaySchedule 本來就在算的排程結果
+        // （超時、公休、雨天戶外都已經是每張卡片「⚠️ 注意事項」在用的同一套判斷），
+        // 只是這裡把散落在各張卡片的事實彙總成一份清單，AI 完全不參與「判斷對錯」這件事
+        const HEALTH_CHECK_LONG_DAY_MIN = 720; // 單日從出發到最後一站結束超過 12 小時，算步調偏緊
+        function collectItineraryHealthFacts() {
+            const byId = {};
+            attractionsData.forEach(item => { byId[item.id] = item; });
+            const facts = [];
+            for (let d = 1; d <= dayCount; d++) {
+                const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
+                if (dayItems.length === 0) continue;
+                const dayDate = getDateForDayIndex(d);
+                const dayWeather = dayDate ? weatherByDate[formatDateISO(dayDate)] : null;
+                const dayIsRainy = dayWeather ? isRainyWeatherCode(dayWeather.code) : false;
+                const schedule = computeDaySchedule(d, dayItems);
+
+                dayItems.forEach((item, idx) => {
+                    const entry = schedule[idx];
+                    if (entry.outOfHours) facts.push(`Day ${d}「${item.name}」預估到達時間可能超出營業時間`);
+                    if (dayDate && getClosedWeekdays(item).includes(dayDate.getDay())) facts.push(`Day ${d}「${item.name}」這天可能是公休日`);
+                    if (dayIsRainy && !isIndoorFriendly(item)) facts.push(`Day ${d}「${item.name}」是戶外景點，這天預報有雨`);
+                });
+
+                const lastEntry = schedule[schedule.length - 1];
+                const dayStartMin = clockToMinutes(getDayStartTime(d));
+                const totalMin = lastEntry.endMin - dayStartMin;
+                if (totalMin > HEALTH_CHECK_LONG_DAY_MIN) {
+                    const hours = Math.round(totalMin / 60 * 10) / 10;
+                    facts.push(`Day ${d} 從 ${formatMinutesToClock(dayStartMin)} 排到 ${formatMinutesToClock(lastEntry.endMin)}，共約 ${hours} 小時，步調偏緊`);
+                }
+            }
+            return facts;
+        }
+
+        // 🩺 把規則引擎抓到的事實交給 Gemini，請它只負責改寫成溫暖好讀的建議文字——
+        // 提示詞比照 buildChatSystemPrompt 的限制：不能新增清單以外的推測、不能建議資料庫沒有的景點
+        async function callGeminiForHealthCheck(facts) {
+            const factList = facts.map(f => `- ${f}`).join('\n');
+            const prompt = `你是「Kinopio」🍄，旅圖知情所這個大阪自由行網站的旅遊助理。以下是系統規則引擎自動抓出來、已經確定的行程排程事實，不是你自己判斷出來的：
+${factList}
+
+請把這些事實改寫成給旅人看的健檢建議，語氣溫暖、精簡、口語化，2-4句話即可。只能根據上面列出的事實改寫，不要新增清單以外的推測或建議（例如不要建議「改去哪個景點」，資料庫以外的景點你不清楚細節，不要提）。
+
+請只輸出一個JSON物件（不要有其他文字、不要用markdown code fence包起來），格式如下：
+{ "summary": "2-4句話的健檢建議文字" }`;
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            if (!res.ok) throw new Error(`AI健檢失敗（狀態碼 ${res.status}）`);
+            const data = await res.json();
+            let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+            const parsed = JSON.parse(text);
+            if (!parsed.summary) throw new Error('AI回傳格式不完整');
+            return parsed.summary;
+        }
+
+        // 🩺 按鈕觸發：規則引擎先跑（100%穩定），AI 潤飾失敗就優雅降級成直接顯示規則引擎的原始條列，
+        // 不會讓整個健檢功能因為 AI 掛掉就完全不能用
+        async function runHealthCheck() {
+            pruneDayPlan();
+            const daysWithEnoughItems = dayPlan.filter(day => day.length >= 2).length;
+            if (daysWithEnoughItems === 0) {
+                showToast('至少要有一天排入 2 個以上景點，Kinopio 才有東西可以健檢', false);
+                return;
+            }
+
+            const facts = collectItineraryHealthFacts();
+            const btn = document.getElementById('health-check-btn');
+            isRunningHealthCheck = true;
+            if (btn) { btn.disabled = true; btn.textContent = '🩺 Kinopio 健檢中...'; }
+            generateDynamicTimeline();
+
+            try {
+                if (facts.length === 0) {
+                    currentHealthCheck = { issues: [], summary: '目前排程看起來很順，沒有發現明顯的時間或天氣衝突！', snapshot: getItineraryStructureSnapshot() };
+                } else {
+                    const summary = await callGeminiForHealthCheck(facts);
+                    currentHealthCheck = { issues: facts, summary, snapshot: getItineraryStructureSnapshot() };
+                }
+                showToast('Kinopio 幫你健檢完成了！', true);
+            } catch (err) {
+                console.error('行程健檢 AI 潤飾失敗：', err);
+                currentHealthCheck = { issues: facts, summary: null, snapshot: getItineraryStructureSnapshot() };
+                showToast('Kinopio 潤飾文字時迷路了，先顯示原始健檢結果', false);
+            } finally {
+                isRunningHealthCheck = false;
+                if (btn) { btn.disabled = false; btn.textContent = '🩺 幫我健檢行程'; }
+                generateDynamicTimeline();
+            }
+        }
+
+        // 🩺 主動提醒：景點第一次全部排定（未分配區清空）時跳一次 Toast，提示可以健檢——
+        // 不是自動觸發 AI，使用者還是要自己按按鈕；用 hasNudgedHealthCheck 避免同一次排滿狀態重複跳出，
+        // 使用者又把景點移出未分配區的話會重置，之後重新排滿還能再提醒一次
+        function maybeNudgeHealthCheck() {
+            if (unassignedIds.length === 0 && myItineraryIds.size > 0 && !hasNudgedHealthCheck) {
+                hasNudgedHealthCheck = true;
+                showToast('行程都排好囉，要不要讓 Kinopio 幫你健檢一下？', true);
+            } else if (unassignedIds.length > 0) {
+                hasNudgedHealthCheck = false;
+            }
+        }
+
         // 依目前的 dayPlan（使用者手動排定的天數）分組，只回傳已經有排入景點的天
         function groupAttractionsByDay(selectedAttractions) {
             const byId = {};
@@ -2767,6 +2892,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             if (newDayIdx === 0) unassignedIds.push(itemId);
             else dayPlan[newDayIdx - 1].push(itemId);
             saveDayPlan();
+            maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
@@ -3047,6 +3173,32 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                         <div class="text-[11px] font-bold text-[#9678a5] mb-1">🍄 Kinopio 的行程小提醒</div>
                         <p class="text-sm text-[#2e2639] leading-relaxed">${escapeHtml(currentAINarrative.opening)}</p>
                         ${isStale ? '<p class="text-[11px] text-amber-500 mt-2">行程內容有更新，按上方按鈕可重新生成介紹</p>' : ''}
+                    </div>
+                `;
+            }
+
+            // 🩺 行程健檢：載入中顯示動畫；完成後如果 AI 潤飾成功就顯示 Kinopio 寫的建議文字，
+            // AI 失敗則優雅降級，直接顯示規則引擎算出來的原始事實條列（跟卡片「⚠️ 注意事項」同一套視覺語言）
+            if (isRunningHealthCheck) {
+                timelineHTML += `
+                    <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4 animate-pulse">
+                        <div class="h-3 bg-[#cab8d4] rounded w-3/4 mb-2"></div>
+                        <div class="h-3 bg-[#cab8d4] rounded w-1/2"></div>
+                        <p class="text-[11px] text-[#9678a5] mt-2">🩺 Kinopio 正在幫你健檢行程...</p>
+                    </div>
+                `;
+            } else if (currentHealthCheck) {
+                const isHealthCheckStale = getItineraryStructureSnapshot() !== currentHealthCheck.snapshot;
+                const bodyHTML = currentHealthCheck.summary
+                    ? `<p class="text-sm text-[#2e2639] leading-relaxed">${escapeHtml(currentHealthCheck.summary)}</p>`
+                    : (currentHealthCheck.issues.length > 0
+                        ? `<ul class="mt-1 ml-4 list-disc space-y-0.5 text-xs text-amber-800">${currentHealthCheck.issues.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`
+                        : `<p class="text-sm text-[#6b8f71] leading-relaxed">目前排程看起來很順，沒有發現明顯的時間或天氣衝突！</p>`);
+                timelineHTML += `
+                    <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4">
+                        <div class="text-[11px] font-bold text-[#9678a5] mb-1">🩺 Kinopio 的行程健檢</div>
+                        ${bodyHTML}
+                        ${isHealthCheckStale ? '<p class="text-[11px] text-amber-500 mt-2">行程內容有更新，按上方按鈕可重新健檢</p>' : ''}
                     </div>
                 `;
             }
