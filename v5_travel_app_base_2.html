@@ -290,11 +290,15 @@
                 </button>
             </div>
             <!-- 🩺 行程健檢：獨立一顆按鈕、隨時可按，不設「確認行程」這種全站沒有先例的關卡，
-                 邏輯比照上面的敘事按鈕（有沒有東西可以處理由函式內部擋，不是靠按鈕本身鎖住） -->
-            <button onclick="runHealthCheck()" id="health-check-btn"
-                class="mt-2 w-full px-5 py-2.5 text-sm font-bold text-[#6b5a7a] bg-[#faf6ee] hover:bg-[#f2eef4] border border-[#cab8d4] rounded-xl transition">
-                🩺 幫我健檢行程
-            </button>
+                 邏輯比照上面的敘事按鈕（有沒有東西可以處理由函式內部擋，不是靠按鈕本身鎖住）。
+                 靠右對齊、疊在上面「讓 Kinopio 重新幫你寫行程」按鈕正下方，視覺上才有從屬關係，
+                 不會變成貼著左邊、跟輸入框對齊反而顯得突兀 -->
+            <div class="flex justify-end">
+                <button onclick="runHealthCheck()" id="health-check-btn"
+                    class="mt-2 px-4 py-1.5 text-xs font-bold text-[#6b5a7a] bg-[#faf6ee] hover:bg-[#f2eef4] border border-[#cab8d4] rounded-lg transition">
+                    🩺 幫我健檢行程
+                </button>
+            </div>
         </div>
 
         <!-- AI 智能時間軸區塊 (新增) -->
@@ -1333,15 +1337,24 @@
             generateDynamicTimeline();
         }
 
-        // 拖拉排序：放到某張卡片「前面」，插入到精確位置
+        // 拖拉排序：放到某張卡片附近，插入到精確位置
+        // 🐛 修正：原本永遠插到目標「前面」，同一天只有 2 個項目時，把上面的往下拖放到下面那張上面，
+        // 插回「前面」等於位置完全沒變，看起來像拖曳沒反應；但反過來拖（下面往上拖）插到前面就會正確交換。
+        // 改成先比對拖曳項目原本在目標的前面還是後面：從前面拖過來（往下拖）就插到目標「後面」，
+        // 從後面拖過來（往上拖）才插到目標「前面」——放開的位置才會跟滑鼠移動的方向一致，不再兩個方向不對稱
         function handleCardDrop(e, dayIndex, targetItemId) {
             e.preventDefault();
             e.stopPropagation();
             if (!draggedItemId || draggedItemId === targetItemId) return;
-            removeFromAllDaySlots(draggedItemId);
             const list = dayIndex === 0 ? unassignedIds : dayPlan[dayIndex - 1];
+            const draggedOriginalIdx = list.indexOf(draggedItemId);
+            const targetOriginalIdx = list.indexOf(targetItemId);
+            const insertAfter = draggedOriginalIdx !== -1 && draggedOriginalIdx < targetOriginalIdx;
+
+            removeFromAllDaySlots(draggedItemId);
             const targetIdx = list.indexOf(targetItemId);
-            list.splice(targetIdx === -1 ? list.length : targetIdx, 0, draggedItemId);
+            const insertIdx = targetIdx === -1 ? list.length : (insertAfter ? targetIdx + 1 : targetIdx);
+            list.splice(insertIdx, 0, draggedItemId);
             draggedItemId = null;
             saveDayPlan();
             maybeNudgeHealthCheck();
@@ -2922,7 +2935,13 @@ ${factList}
         }
 
         // 在同一天（或未分配區）內，把景點往上/往下移一格（觸控裝置無法拖曳時的替代操作）
+        // 🛡️ 防連點冷卻：每次排序都會整個重新渲染，卡片位置跟著挪動。如果使用者在同一個
+        // 螢幕座標快速點第二下，其實是點到「剛好遞補過來」的另一張卡片的按鈕，會誤觸別的項目
+        // （↑ 特別明顯：連點兩下會把剛交換的兩個項目又換回去，看起來像「跳回原位」）。
+        // 短暫忽略渲染後極短時間內的點擊，讓使用者的點擊之間有機會先看到卡片真的動了，才點下一下。
+        let isReorderCooldown = false;
         function moveItemWithinDay(itemId, delta) {
+            if (isReorderCooldown) return;
             const dayIdx = findItemLocation(itemId);
             const list = dayIdx === 0 ? unassignedIds : dayPlan[dayIdx - 1];
             const idx = list.indexOf(itemId);
@@ -2932,6 +2951,8 @@ ${factList}
             [list[idx], list[newIdx]] = [list[newIdx], list[idx]];
             saveDayPlan();
             generateDynamicTimeline();
+            isReorderCooldown = true;
+            setTimeout(() => { isReorderCooldown = false; }, 350);
         }
 
         // 渲染「未分配」區的小卡片（可拖曳，也提供一鍵排入 Day1 按鈕方便手機使用者）
@@ -3051,7 +3072,7 @@ ${factList}
                         <p class="text-xs text-slate-500 flex items-center flex-wrap">${metaLine}</p>
                         ${warningBlock}
                         <div class="flex items-center gap-3 pt-3 border-t border-[#f5ecd9]">
-                            <span class="inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-lg bg-[#f5ecd9] text-[#6b5535]">${safeTicket}・${safeHours || '請見官網'}</span>
+                            <span class="inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-lg bg-[#f5ecd9] text-[#6b5535]">門票 ${safeTicket}・營業 ${safeHours || '請見官網'}</span>
                             <div class="ml-auto flex items-center gap-1.5 shrink-0">
                                 <a href="${getMapUrl(item)}" target="_blank" rel="noopener noreferrer" title="開啟地圖" class="${linkBtnClass}">${mapIconSvg}</a>
                                 <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟網站" class="${linkBtnClass}">${linkIconSvg}</a>
@@ -3172,7 +3193,7 @@ ${factList}
                     <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4">
                         <div class="text-[11px] font-bold text-[#9678a5] mb-1">🍄 Kinopio 的行程小提醒</div>
                         <p class="text-sm text-[#2e2639] leading-relaxed">${escapeHtml(currentAINarrative.opening)}</p>
-                        ${isStale ? '<p class="text-[11px] text-amber-500 mt-2">行程內容有更新，按上方按鈕可重新生成介紹</p>' : ''}
+                        ${isStale ? '<p class="text-[11px] font-bold text-amber-600 mt-2">⚠️ 行程內容有更新，按上方按鈕可重新生成介紹</p>' : ''}
                     </div>
                 `;
             }
@@ -3198,7 +3219,7 @@ ${factList}
                     <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4">
                         <div class="text-[11px] font-bold text-[#9678a5] mb-1">🩺 Kinopio 的行程健檢</div>
                         ${bodyHTML}
-                        ${isHealthCheckStale ? '<p class="text-[11px] text-amber-500 mt-2">行程內容有更新，按上方按鈕可重新健檢</p>' : ''}
+                        ${isHealthCheckStale ? '<p class="text-[11px] font-bold text-amber-600 mt-2">⚠️ 行程內容有更新，按上方按鈕可重新健檢</p>' : ''}
                     </div>
                 `;
             }
