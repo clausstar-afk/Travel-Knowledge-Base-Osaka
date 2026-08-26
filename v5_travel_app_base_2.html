@@ -432,7 +432,6 @@
                 hours: "10:00 - 20:00",
                 hoursRemark: "(依季節每日變動)",
                 ticket: "約 ¥2,700",
-                ticketRemark: "🏷️ 持周遊卡享折扣",
                 transport: "大阪港站 徒步5分",
                 transportRemark: "地鐵中央線直達",
                 stay: "2.5 - 3 小時",
@@ -451,7 +450,6 @@
                 hours: "08:30 - 21:30",
                 hoursRemark: "(每日開園時間不同)",
                 ticket: "約 ¥8,600 起",
-                ticketRemark: "🏷️ 建議預先購買快速通關",
                 transport: "JR 影城城鎮站 徒步1分",
                 transportRemark: "JR 櫻島線直達",
                 stay: "全天 (6-8小時)",
@@ -470,7 +468,6 @@
                 hours: "09:00 - 17:00",
                 hoursRemark: "(最終入館 16:30)",
                 ticket: "約 ¥600",
-                ticketRemark: "🏷️ 持周遊卡免費入場",
                 transport: "谷町四丁目站 徒步10分",
                 transportRemark: "地鐵谷町線/中央線",
                 stay: "1.5 - 2 小時",
@@ -1369,28 +1366,52 @@
             }
         }
 
+        // 🔧 完整的 CSV 解析器：不再事先用 split(/\r\n|\n/) 把整份文字切成行——換行本身可能就是
+        // 某個欄位內容的一部分（Google Sheet 儲存格內按 Alt+Enter 換行很常見），只有「不在引號內」時
+        // 遇到的換行，才代表真的換到下一列資料。逐字元掃描整份文字，同時處理：
+        // (1) 引號內的逗號／換行都當作欄位內容，不會被誤判成分隔符
+        // (2) CSV 標準的跳脫雙引號寫法 ""（代表欄位文字裡的一個真正雙引號），還原成一個 "
+        function parseCSVRows(csvText) {
+            const rows = [];
+            let row = [];
+            let entry = '';
+            let insideQuote = false;
+            for (let i = 0; i < csvText.length; i++) {
+                const char = csvText[i];
+                if (insideQuote) {
+                    if (char === '"') {
+                        if (csvText[i + 1] === '"') { entry += '"'; i++; } // "" → 還原成一個 "
+                        else insideQuote = false;
+                    } else {
+                        entry += char;
+                    }
+                } else if (char === '"') {
+                    insideQuote = true;
+                } else if (char === ',') {
+                    row.push(entry.trim());
+                    entry = '';
+                } else if (char === '\r') {
+                    // 交給後面的 \n 處理，這裡略過，避免 \r\n 被算成兩次換行
+                } else if (char === '\n') {
+                    row.push(entry.trim());
+                    entry = '';
+                    if (row.some(v => v !== '')) rows.push(row); // 跳過完全空白的列
+                    row = [];
+                } else {
+                    entry += char;
+                }
+            }
+            row.push(entry.trim()); // 檔案結尾沒有換行的最後一列
+            if (row.some(v => v !== '')) rows.push(row);
+            return rows;
+        }
+
         // 模糊欄位尋找器 (findCol) ＆ CSV 解析
         function parseCSVData(csvText) {
-            const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
-            if (lines.length < 2) return null;
-            
-            // 簡易 CSV split (處理引號內的逗號)
-            const parseRow = row => {
-                const result = [];
-                let insideQuote = false;
-                let entry = '';
-                for (let char of row) {
-                    if (char === '"') insideQuote = !insideQuote;
-                    else if (char === ',' && !insideQuote) {
-                        result.push(entry.trim());
-                        entry = '';
-                    } else entry += char;
-                }
-                result.push(entry.trim());
-                return result;
-            };
+            const rows = parseCSVRows(csvText);
+            if (rows.length < 2) return null;
 
-            const headers = parseRow(lines[0]);
+            const headers = rows[0];
             const findCol = (keywords) => {
                 return headers.findIndex(h => keywords.some(k => h.toLowerCase().includes(k.toLowerCase())));
             };
@@ -1406,17 +1427,20 @@
                 hours: findCol(['營業時間', 'businesshours']),
                 hoursRemark: findCol(['營業備註', '時間備註']),
                 ticket: findCol(['門票資訊', '門票', '票價', 'ticket']),
-                ticketRemark: findCol(['門票優惠', '票價備註', '優惠']),
                 transport: findCol(['交通方式', '交通', 'transport']),
                 transportRemark: findCol(['交通備註']),
                 stay: findCol(['建議停留', '停留', 'stay', 'duration']),
                 stayRemark: findCol(['停留備註']),
-                website: findCol(['官網', '網站', 'website', 'link'])
+                website: findCol(['官網', '網站', 'website', 'link']),
+                // 🗺️ 自訂地圖連結（選填）：預設用「名稱＋大阪」自動組出 Google 地圖搜尋網址，
+                // 但長條狀街道/商店街這類地標常常搜不到（Google 地圖對範圍模糊的地名索引不完整），
+                // 這裡填了就直接用，不再依賴自動搜尋
+                mapUrl: findCol(['地圖連結', '地圖網址', 'maplink', 'mapurl'])
             };
 
             const results = [];
-            for (let i = 1; i < lines.length; i++) {
-                const row = parseRow(lines[i]);
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
                 if (!row || row.length === 0 || !row[colMap.name]) continue;
                 const name = row[colMap.name];
                 const websiteVal = colMap.website !== -1 ? row[colMap.website] : '';
@@ -1441,13 +1465,13 @@
                     hours: colMap.hours !== -1 ? (row[colMap.hours] || '請見官網') : '請見官網',
                     hoursRemark: colMap.hoursRemark !== -1 ? row[colMap.hoursRemark] : '(詳見官網)',
                     ticket: colMap.ticket !== -1 ? (row[colMap.ticket] || '參閱官網') : '參閱官網',
-                    ticketRemark: colMap.ticketRemark !== -1 ? row[colMap.ticketRemark] : '🏷️ 可用周遊卡',
                     transport: colMap.transport !== -1 ? (row[colMap.transport] || '鄰近電車站') : '鄰近電車站',
                     transportRemark: colMap.transportRemark !== -1 ? row[colMap.transportRemark] : '大眾運輸直達',
                     stay: colMap.stay !== -1 ? (row[colMap.stay] || '1-2 小時') : '1-2 小時',
                     stayRemark: colMap.stayRemark !== -1 ? row[colMap.stayRemark] : '建議安排日間前往',
                     website: finalWebsite,
-                    isSearchWebsite: isSearchWebsite
+                    isSearchWebsite: isSearchWebsite,
+                    mapUrl: colMap.mapUrl !== -1 ? (row[colMap.mapUrl] || '') : ''
                 });
             }
             return results;
@@ -1463,12 +1487,14 @@
                 }
             });
             container.innerHTML = Array.from(categories).map(cat => {
-                const label = cat === 'ALL' ? '🌟 全部分類' : cat;
+                // 🔒 cat 來自 CSV「分類」欄位，跟其他所有卡片欄位一樣是不可信任的外部資料，
+                // 這裡漏跳脫會讓惡意分類文字直接跳出 onclick 屬性、或以 innerHTML 塞進按鈕文字執行
+                const label = cat === 'ALL' ? '🌟 全部分類' : escapeHtml(cat);
                 const isSelected = currentCategory === cat;
                 const activeClass = isSelected
                     ? 'bg-[#2c5f7c] text-white shadow-md shadow-[#d3e3e9] font-bold'
                     : 'bg-[#faf6ee] text-slate-600 hover:bg-[#e8dcc8] border border-[#d8cba8] font-medium';
-                return `<button onclick="filterCategory('${cat}')" class="px-4 py-2 text-xs rounded-xl shrink-0 transition ${activeClass}">${label}</button>`;
+                return `<button onclick="filterCategory('${escapeJsAttr(cat)}')" class="px-4 py-2 text-xs rounded-xl shrink-0 transition ${activeClass}">${label}</button>`;
             }).join('');
         }
 
@@ -1604,6 +1630,12 @@ ${list}
         // 附上完整地址雖然更精準，但會讓使用者點開地圖時看到一長串地址文字。這些都是有辨識度的地標名稱，
         // 「名稱＋大阪」已經足夠導到正確地點，換來乾淨許多的顯示效果。
         function getMapUrl(item) {
+            // 🗺️ CSV 有填「地圖連結」就優先用（例如長條狀商店街這類地標，Google 地圖對「名稱＋大阪」
+            // 這種自動搜尋常常索引不到，直接貼分享網址最準）；沒填就沿用自動搜尋網址。
+            // 🔒 自訂網址是從 CSV 貼進來的外部字串，跟其他欄位一樣不可信任，要跳脫才能安全塞進 href 屬性。
+            if (item.mapUrl && item.mapUrl.trim() !== '') {
+                return escapeHtml(item.mapUrl.trim());
+            }
             const searchQuery = `${item.name} 大阪`;
             return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery.trim())}`;
         }
@@ -1685,7 +1717,7 @@ ${list}
                 const btnLabelText = isSelected ? '已加入行程' : '加入我的行程';
                 
                 // 官網按鈕標籤文字
-                const websiteBtnLabel = item.isSearchWebsite ? '搜尋官網 ↗' : '前往官網 ↗';
+                const websiteBtnLabel = item.isSearchWebsite ? '搜尋網站 ↗' : '前往網站 ↗';
                 
                 // 分類 Tag Array
                 const tags = item.category ? item.category.split(',').map(t => t.trim()) : ['熱門景點'];
@@ -1698,7 +1730,6 @@ ${list}
                 const safeHours = escapeHtml(item.hours);
                 const safeHoursRemark = escapeHtml(item.hoursRemark || '(詳見官網)');
                 const safeTicket = escapeHtml(item.ticket);
-                const safeTicketRemark = escapeHtml(item.ticketRemark || '🏷️ 可用周遊卡');
                 const safeTransport = escapeHtml(item.transport);
                 const safeTransportRemark = escapeHtml(item.transportRemark || '電車直達');
                 const safeStay = escapeHtml(item.stay);
@@ -1769,25 +1800,25 @@ ${list}
                                 <div class="min-w-0">
                                     <div class="text-[11px] font-medium text-slate-400">門票資訊</div>
                                     <div class="font-bold text-slate-700 truncate" title="${safeTicket}">${safeTicket}</div>
-                                    <div class="text-[11px] text-[#6b8f71] font-medium truncate" title="${safeTicketRemark}">${safeTicketRemark}</div>
                                 </div>
                                 <div class="min-w-0">
                                     <div class="text-[11px] font-medium text-slate-400">交通方式</div>
                                     <div class="font-bold text-slate-700 truncate" title="${safeTransport}">${safeTransport}</div>
-                                    <div class="text-[11px] text-slate-400 truncate" title="${safeTransportRemark}">${safeTransportRemark}</div>
+                                    <!-- 沒填交通備註時就不渲染這行，不留一行空白——不是每個景點都有值得補充的路線資訊 -->
+                                    ${item.transportRemark ? `<div class="text-[11px] text-slate-400 truncate" title="${safeTransportRemark}">${safeTransportRemark}</div>` : ''}
                                 </div>
                                 <div class="min-w-0">
                                     <div class="text-[11px] font-medium text-slate-400">建議停留</div>
                                     <div class="font-bold text-slate-700 truncate" title="${safeStay}">${safeStay}</div>
-                                    <div class="text-[11px] text-slate-400 truncate" title="${safeStayRemark}">${safeStayRemark}</div>
+                                    <!-- 沒填停留備註時就不渲染這行，不留一行空白——不是每個景點都有值得補充的時效性提醒 -->
+                                    ${item.stayRemark ? `<div class="text-[11px] text-slate-400 truncate" title="${safeStayRemark}">${safeStayRemark}</div>` : ''}
                                 </div>
                             </div>
 
-                            <!-- 5. 免責聲明與官網連結 -->
-                            <div class="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
-                                <span class="flex items-center gap-1">
-                                    <span>⚠️</span> 時間以官網為準
-                                </span>
+                            <!-- 5. 官網連結：原本這裡還有一句「⚠️ 時間以官網為準」，跟上方營業時間欄位的
+                                 hoursRemark 小灰字（預設就是「(詳見官網)」）講的是同一件事，同張卡片重複提醒
+                                 兩次，拿掉這裡只留 hoursRemark 那句 -->
+                            <div class="flex items-center justify-end text-[11px] text-slate-400 pt-0.5">
                                 <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" class="font-bold text-[#2c5f7c] hover:text-[#234c66] flex items-center gap-0.5">
                                     ${websiteBtnLabel}
                                 </a>
@@ -2861,7 +2892,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                             <span class="inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-lg bg-[#f5ecd9] text-[#6b5535]">${safeTicket}・${safeHours || '請見官網'}</span>
                             <div class="ml-auto flex items-center gap-1.5 shrink-0">
                                 <a href="${getMapUrl(item)}" target="_blank" rel="noopener noreferrer" title="開啟地圖" class="${linkBtnClass}">${mapIconSvg}</a>
-                                <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟官網" class="${linkBtnClass}">${linkIconSvg}</a>
+                                <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟網站" class="${linkBtnClass}">${linkIconSvg}</a>
                             </div>
                         </div>
                         <p class="text-xs text-slate-600 leading-relaxed pt-3 border-t border-[#f5ecd9]">
