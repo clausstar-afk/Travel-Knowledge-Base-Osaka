@@ -511,14 +511,15 @@
         // 模型名稱請以你自己Google AI Studio後台實際顯示的可用模型為準，這裡先用一個常見的輕量模型示範
         const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 
-        // 🍄 Kinopio 聊天問答功能：用 OpenRouter 的免費模型（Gemma 4 26B A4B），跟上面兩組 Key 同樣的風險/做法。
+        // 🍄 Kinopio 聊天問答功能：主要打 Gemini（跟上面 AI 搜尋／行程介紹共用同一組 Key），
+        // 失敗才降級打 OpenRouter 的免費模型（Gemma 4 26B A4B → 31B），跟上面兩組 Key 同樣的風險/做法。
         // 這組 Key 已經在 OpenRouter 後台設定 Credit limit（花費上限），就算 Key 外流，最多損失也鎖死在那個金額內。
         // 免費模型額度是「整個帳號」共用（不是每個訪客各自一份），沒儲值過的話大約 50 次/天，超過會回傳 429。
         const OPENROUTER_API_KEY = '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';
-        // 雙模型備援：26B A4B 速度快，優先打這個；如果失敗（額度用完/當下壅塞/其他錯誤）就自動改打 31B 再試一次，
-        // 兩個都失敗才讓使用者看到錯誤訊息——使用者完全不會感覺到中間切換過模型
-        const OPENROUTER_CHAT_MODEL_PRIMARY = 'google/gemma-4-26b-a4b-it:free';
-        const OPENROUTER_CHAT_MODEL_FALLBACK = 'google/gemma-4-31b-it:free';
+        // 三層備援：Gemini 額度池跟 OpenRouter 完全獨立，兩邊都出問題的機率低很多；
+        // OpenRouter 這兩個免費模型退居第二／第三層，順序不變（26B A4B 較快，31B 當最後備援）
+        const OPENROUTER_CHAT_MODEL_BACKUP1 = 'google/gemma-4-26b-a4b-it:free';
+        const OPENROUTER_CHAT_MODEL_BACKUP2 = 'google/gemma-4-31b-it:free';
 
         // 🚦 每個瀏覽器每天最多問 Kinopio 幾次：免費額度是「整個帳號」共用，尖峰時段少數人問太多次
         // 會害其他人整天都問不了。這個上限沒辦法增加總額度，只是讓大家平均分配，減少被少數人用光的機率。
@@ -2003,6 +2004,36 @@ ${list}
             }
         }
 
+        // 呼叫 Gemini 當聊天的主要模型：把 OpenAI 格式的 messages（role: system/user/assistant）
+        // 轉成 Gemini 的格式（system_instruction 獨立一欄，contents 裡的 role 只有 user/model）。
+        // 回傳格式跟 callOpenRouterModel 完全一樣（{ok, isQuota, reply}），sendChatMessage 才能三層都用同一套邏輯接。
+        async function callGeminiChatModel(messages) {
+            try {
+                const systemMsg = messages.find(m => m.role === 'system');
+                const turns = messages
+                    .filter(m => m.role !== 'system')
+                    .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+                    body: JSON.stringify({
+                        contents: turns,
+                        system_instruction: { parts: [{ text: systemMsg?.content || '' }] }
+                    })
+                });
+                if (res.status === 429) return { ok: false, isQuota: true };
+                if (!res.ok) return { ok: false, isQuota: false };
+                const data = await res.json();
+                const reply = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+                if (!reply) return { ok: false, isQuota: false };
+                return { ok: true, reply };
+            } catch (e) {
+                console.error('Kinopio 聊天問答失敗（Gemini）:', e);
+                return { ok: false, isQuota: false };
+            }
+        }
+
         // 呼叫單一個 OpenRouter 模型：成功回傳 { ok:true, reply }，失敗回傳 { ok:false, isQuota }
         // （isQuota 標記是不是 429，用來決定最後要顯示哪一種錯誤訊息給使用者）
         async function callOpenRouterModel(model, messages) {
@@ -2050,12 +2081,17 @@ ${list}
             setChatLoading(true);
             const messages = [{ role: 'system', content: buildChatSystemPrompt() }, ...chatHistory];
 
-            // 雙模型備援：主要模型失敗（額度用完/當下壅塞/其他錯誤）就自動改打備援模型再試一次，
-            // 使用者完全不會感覺到中間切換過模型，兩個都失敗才會看到錯誤訊息
-            let result = await callOpenRouterModel(OPENROUTER_CHAT_MODEL_PRIMARY, messages);
+            // 三層備援：Gemini 失敗才降級打 OpenRouter（26B A4B → 31B），使用者完全不會感覺到
+            // 中間切換過模型，三個都失敗才會看到錯誤訊息。Gemini 跟 OpenRouter 是兩個獨立額度池，
+            // 其中一邊塞車/額度用完不會連帶拖垮另一邊
+            let result = await callGeminiChatModel(messages);
             if (!result.ok) {
-                console.warn('主要模型（26B A4B）失敗，改用備援模型（31B）再試一次');
-                result = await callOpenRouterModel(OPENROUTER_CHAT_MODEL_FALLBACK, messages);
+                console.warn('Kinopio 聊天：Gemini 失敗，改用 OpenRouter 備援模型（26B A4B）再試一次');
+                result = await callOpenRouterModel(OPENROUTER_CHAT_MODEL_BACKUP1, messages);
+            }
+            if (!result.ok) {
+                console.warn('Kinopio 聊天：OpenRouter 26B A4B 也失敗，改用最後備援（31B）再試一次');
+                result = await callOpenRouterModel(OPENROUTER_CHAT_MODEL_BACKUP2, messages);
             }
 
             if (result.ok) {
