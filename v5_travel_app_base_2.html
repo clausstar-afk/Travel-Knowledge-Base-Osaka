@@ -182,11 +182,11 @@
                 <span class="block text-right pr-[8%] sm:pr-[12%]">排成<span class="inline-block text-5xl sm:text-7xl text-[#2c5f7c]">行動</span>的每一天</span>
             </h1>
             <p class="text-sm text-slate-500 leading-loose max-w-md mx-auto mb-7">
-                景點資料庫、航班天氣查詢、AI 客製化建議、拖拉分天排程——從找景點到排好整趟行程，一站完成。
+                景點資料庫、航班查詢與天氣提醒、AI 客製化建議、拖拉分天排程——從找景點到排好整趟行程，一站完成。
             </p>
             <div class="flex items-center justify-center gap-3 flex-wrap mb-8">
                 <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
-                    <div class="hand text-xl font-black text-[#2c5f7c]">38+</div>
+                    <div class="hand text-xl font-black text-[#2c5f7c]" id="hero-count-attractions">38+</div>
                     <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">精選景點</div>
                 </div>
                 <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
@@ -2159,6 +2159,10 @@ ${list}
         function updateCounts() {
             document.getElementById('count-all').textContent = attractionsData.length;
             document.getElementById('count-itinerary').textContent = myItineraryIds.size;
+            // 🍄 Hero 區塊的「精選景點」數字改成跟著資料庫即時算，不再寫死數字：
+            // 之後 Google Sheet 增減景點筆數，這裡永遠自動對得上，不用回頭改 Hero 文案
+            const heroCount = document.getElementById('hero-count-attractions');
+            if (heroCount) heroCount.textContent = `${attractionsData.length}+`;
         }
 
         // Toast 動態通知
