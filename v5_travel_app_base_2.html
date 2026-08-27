@@ -203,11 +203,19 @@
                 <span class="block text-left pl-[8%] sm:pl-[12%]">把<span class="inline-block text-5xl sm:text-7xl text-[#2c5f7c]">心動</span>，</span>
                 <span class="block text-right pr-[8%] sm:pr-[12%]">排成<span class="inline-block text-5xl sm:text-7xl text-[#2c5f7c]">行動</span>的每一天</span>
             </h1>
-            <!-- 三個短標籤取代原本一整句密集資訊，故意不加圖示（見上方大註解第 5 點） -->
-            <div class="flex items-center justify-center gap-2 flex-wrap max-w-md mx-auto mb-4">
-                <span class="text-[11px] font-bold text-[#5c7a8a] bg-[#eef3f5] border border-[#dde7ea] rounded-full px-3 py-1">景點資料庫</span>
-                <span class="text-[11px] font-bold text-[#5c7a8a] bg-[#eef3f5] border border-[#dde7ea] rounded-full px-3 py-1">航班查詢與天氣提醒</span>
-                <span class="text-[11px] font-bold text-[#5c7a8a] bg-[#eef3f5] border border-[#dde7ea] rounded-full px-3 py-1">AI 客製化建議</span>
+            <!-- 🔒 使用者要求：三個中文標籤改成英文單字，拿掉藥丸底色改成純文字＋分隔符號，
+                 營造俐落的英文排版感而不是按鈕感。同時透過「字級／字重／飽和度」三個維度一起降低
+                 視覺權重，確保跟主標題有清楚的主從關係：字級明顯小於主標題（30-72px）但比原本
+                 11px 的小字有存在感；字重用 font-medium（500）不用最粗的 font-black；顏色用
+                 主標題同色系（#2c5f7c）但飽和度降低的版本（#6f8b96），三者同時調整才不會
+                 只改一個維度、視覺權重還是不上不下。tracking-wide 加一點letter-spacing，
+                 英文單字才有俐落感、不會擠成一團。title 屬性附上中文對照，方便看不懂英文的使用者 -->
+            <div class="flex items-center justify-center gap-2.5 sm:gap-3 mb-4">
+                <span class="text-lg sm:text-2xl font-medium text-[#6f8b96] tracking-wide" title="景點探索">Explore</span>
+                <span class="text-lg sm:text-2xl text-[#cbbfa0]">·</span>
+                <span class="text-lg sm:text-2xl font-medium text-[#6f8b96] tracking-wide" title="航班天氣同步">Sync</span>
+                <span class="text-lg sm:text-2xl text-[#cbbfa0]">·</span>
+                <span class="text-lg sm:text-2xl font-medium text-[#6f8b96] tracking-wide" title="AI 精選建議">Curate</span>
             </div>
             <div class="flex items-center justify-center gap-3 flex-wrap mb-5">
                 <!-- 定位圖釘：跟景點卡片「開啟地圖」按鈕同一個 SVG path，全站同一個視覺語言不用重畫一個新圖示 -->
@@ -220,20 +228,23 @@
                         <div class="text-[10px] font-bold text-[#8a7a5c]">精選景點</div>
                     </div>
                 </div>
-                <!-- 折疊地圖：代表「地區分類」 -->
+                <!-- 🔒 使用者實測回報三個圖示風格不一致（原本折疊地圖跟星芒的視覺複雜度/線條特徵跟定位圖釘
+                     不像同一套圖示庫）。改成羅盤（圓框＋指針多邊形），視覺結構跟定位圖釘一樣是「外框＋內部
+                     實心細節」，同一種構圖邏輯，看起來才像同一個圖示家族 -->
                 <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl pl-3 pr-4 py-2.5 min-w-[112px] flex items-center gap-2.5">
                     <div class="w-9 h-9 rounded-lg bg-[#eaf1f4] flex items-center justify-center shrink-0">
-                        <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 4 5.5v15L9 18l6 3 5-2.5v-15L15 6l-6-3Z"/><path d="M9 3v15M15 6v15"/></svg>
+                        <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5 5-2z"/></svg>
                     </div>
                     <div class="text-left">
                         <div class="hand text-2xl font-black text-[#2c5f7c] leading-tight">7</div>
                         <div class="text-[10px] font-bold text-[#8a7a5c]">大地區分類</div>
                     </div>
                 </div>
-                <!-- 星芒：代表「AI」 -->
+                <!-- 🔒 同上，星芒原本是 8 條放射狀直線畫成的米字，視覺上偏「線條束」，跟圖釘/羅盤那種
+                     「單一封閉外框」的構圖邏輯不同。改成單一封閉四角星形路徑，一樣是外框圖形，風格才統一 -->
                 <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl pl-3 pr-4 py-2.5 min-w-[112px] flex items-center gap-2.5">
                     <div class="w-9 h-9 rounded-lg bg-[#eaf1f4] flex items-center justify-center shrink-0">
-                        <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>
+                        <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2 8 8 2-8 2-2 8-2-8-8-2 8-2 2-8z"/></svg>
                     </div>
                     <div class="text-left">
                         <div class="hand text-2xl font-black text-[#2c5f7c] leading-tight">AI</div>
