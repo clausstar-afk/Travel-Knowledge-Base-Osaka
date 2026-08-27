@@ -2925,9 +2925,15 @@ ${list}
         }
 
         /**
-         * ✨ 呼叫 Gemini API，依選取的景點、天氣預報與使用者風格偏好，生成客製化的行程開場白、各天小語與天氣提醒
+         * ✨ 呼叫 Gemini API，依選取的景點、天氣預報與使用者風格偏好，生成客製化的各天小語與天氣提醒
          * 設計原則：AI只負責「寫有溫度的文字」，不負責排序或計算時間，降低出錯風險
          * 回傳格式要求AI輸出JSON，失敗時回傳null，讓畫面自動退回原本的制式文字（優雅降級）
+         *
+         * 🔒 使用者實測回報這個區塊「感覺冗長、內容重複」，討論後拿掉了兩個東西：
+         * ① 原本還有一段「opening」開場白（純氣氛歡迎詞，沒有任何行程相關資訊），砍掉不影響功能；
+         * ② 原本天氣因應「weatherTips」跟打包提醒「packingTips」是兩個獨立欄位，AI 各寫一句，
+         *    兩句本質上都在講「要不要帶傘」，只是換句話說，讀起來像同一件事複述兩次——改成只要求
+         *    一個欄位，把因應建議跟打包提醒直接寫進同一句話，資訊只出現一次。
          */
         async function callGeminiForNarrative(selectedAttractions, groupedByDay, styleInput) {
             const attractionList = Object.entries(groupedByDay)
@@ -2940,17 +2946,15 @@ ${attractionList}
 
 ${styleInput ? `使用者特別提到想要的旅遊風格：「${styleInput}」，請讓文字語氣呼應這個風格。` : ''}
 
-${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n請針對這幾天，各給一句實用的天氣因應建議（例如要不要帶傘、室內或戶外景點怎麼安排），並再給一句「打包提醒」（例如要不要帶傘、防曬、薄外套、多帶一雙備用鞋這類主觀建議，不要提到具體品牌或數字價格）。` : ''}
+${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n請針對這幾天，各給「一句」實用建議，把天氣因應（例如要不要帶傘、室內或戶外景點怎麼安排）跟打包提醒（防曬、薄外套、備用鞋這類主觀建議，不要提到具體品牌或數字價格）自然地寫進同一句話裡，不要分成兩句各講一半。` : ''}
 
 請你只輸出一個JSON物件（不要有其他文字、不要用markdown code fence包起來），格式如下：
 {
-  "opening": "一段30-50字、溫暖有畫面感的行程開場白，歡迎使用者展開這趟大阪之旅",
   "dayBlurbs": { "Day 1": "一句15-25字、有畫面感的小語，形容這天的行程氛圍", "Day 2": "..." }${weatherContext ? `,
-  "weatherTips": { "Day 1": "一句15-25字、實用的天氣因應建議，只針對上面有列出天氣預報的那幾天生成" },
-  "packingTips": { "Day 1": "一句15-25字、針對這天天氣的打包提醒（帶傘/防曬/外套等主觀建議），只針對上面有列出天氣預報的那幾天生成" }` : ''}
+  "weatherTips": { "Day 1": "一句20-35字、同時涵蓋天氣因應跟打包提醒的建議，只針對上面有列出天氣預報的那幾天生成" }` : ''}
 }
 
-注意：dayBlurbs、weatherTips、packingTips的key都必須完全對應上面【】裡的天數標籤（例如「Day 1」）。不要提到任何具體的營業時間、門票價格、評分數字等事實性資訊，只寫氛圍、感受與主觀建議，這些數字容易過時，交給其他區塊呈現即可。`;
+注意：dayBlurbs、weatherTips的key都必須完全對應上面【】裡的天數標籤（例如「Day 1」）。不要提到任何具體的營業時間、門票價格、評分數字等事實性資訊，只寫氛圍、感受與主觀建議，這些數字容易過時，交給其他區塊呈現即可。`;
 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
             const res = await fetch(url, {
@@ -2972,7 +2976,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
 
             const parsed = JSON.parse(text);
-            if (!parsed.opening || !parsed.dayBlurbs) throw new Error('AI回傳格式不完整');
+            if (!parsed.dayBlurbs) throw new Error('AI回傳格式不完整');
             return parsed;
         }
 
@@ -3027,8 +3031,12 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
         }
 
         // 🩺 行程健檢：規則引擎負責「有沒有問題」，重用 computeDaySchedule 本來就在算的排程結果
-        // （超時、公休、雨天戶外都已經是每張卡片「⚠️ 注意事項」在用的同一套判斷），
-        // 只是這裡把散落在各張卡片的事實彙總成一份清單，AI 完全不參與「判斷對錯」這件事
+        // 只是這裡把事實彙總成一份清單，AI 完全不參與「判斷對錯」這件事
+        //
+        // 🔒 使用者實測回報：健檢摘要跟卡片上的「⚠️ 注意事項」內容常常重複——超時、公休、下雨這幾種事實
+        // 本來就已經逐張卡片單獨顯示過一次了，健檢又整批彙總講一次，等於同一件事被複述兩次。改成健檢
+        // 只收集「卡片上看不到、要橫跨整天才看得出來」的觀察（目前只有「這天步調偏緊」這一種），
+        // 超時/公休/下雨這三種不再放進健檢清單，讓健檢真正提供「新資訊」而不是複誦卡片已經有的警示。
         const HEALTH_CHECK_LONG_DAY_MIN = 720; // 單日從出發到最後一站結束超過 12 小時，算步調偏緊
         function collectItineraryHealthFacts() {
             const byId = {};
@@ -3037,17 +3045,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             for (let d = 1; d <= dayCount; d++) {
                 const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
                 if (dayItems.length === 0) continue;
-                const dayDate = getDateForDayIndex(d);
-                const dayWeather = dayDate ? weatherByDate[formatDateISO(dayDate)] : null;
-                const dayIsRainy = dayWeather ? isRainyWeatherCode(dayWeather.code) : false;
                 const schedule = computeDaySchedule(d, dayItems);
-
-                dayItems.forEach((item, idx) => {
-                    const entry = schedule[idx];
-                    if (entry.outOfHours) facts.push(`Day ${d}「${item.name}」預估到達時間可能超出營業時間`);
-                    if (dayDate && getClosedWeekdays(item).includes(dayDate.getDay())) facts.push(`Day ${d}「${item.name}」這天可能是公休日`);
-                    if (dayIsRainy && !isIndoorFriendly(item)) facts.push(`Day ${d}「${item.name}」是戶外景點，這天預報有雨`);
-                });
 
                 const lastEntry = schedule[schedule.length - 1];
                 const dayStartMin = clockToMinutes(getDayStartTime(d));
@@ -3105,7 +3103,7 @@ ${factList}
 
             try {
                 if (facts.length === 0) {
-                    currentHealthCheck = { issues: [], summary: '目前排程看起來很順，沒有發現明顯的時間或天氣衝突！', snapshot: getItineraryStructureSnapshot() };
+                    currentHealthCheck = { issues: [], summary: '目前每天的步調看起來都還算從容，沒有排太趕的狀況！（超時／公休／下雨這類提醒會直接顯示在個別景點卡片上，這裡不重複列出）', snapshot: getItineraryStructureSnapshot() };
                 } else {
                     const summary = await callGeminiForHealthCheck(facts);
                     currentHealthCheck = { issues: facts, summary, snapshot: getItineraryStructureSnapshot() };
@@ -3539,25 +3537,10 @@ ${factList}
                 `;
             }
 
-            // 🍄 Kinopio 開場白：載入中顯示動畫，成功則顯示 Kinopio 寫的文字，失敗/尚未生成則不顯示（優雅降級，不影響行程正常運作）
-            if (isGeneratingNarrative) {
-                timelineHTML += `
-                    <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4 animate-pulse">
-                        <div class="h-3 bg-[#cab8d4] rounded w-3/4 mb-2"></div>
-                        <div class="h-3 bg-[#cab8d4] rounded w-1/2"></div>
-                        <p class="text-[11px] text-[#9678a5] mt-2">🍄 Kinopio 正在幫你規劃行程...</p>
-                    </div>
-                `;
-            } else if (currentAINarrative?.opening) {
-                const isStale = getItineraryStructureSnapshot() !== currentAINarrative.snapshot;
-                timelineHTML += `
-                    <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4">
-                        <div class="text-[11px] font-bold text-[#9678a5] mb-1">🍄 Kinopio 的行程小提醒</div>
-                        <p class="text-sm text-[#2e2639] leading-relaxed">${escapeHtml(currentAINarrative.opening)}</p>
-                        ${isStale ? '<p class="text-[11px] font-bold text-amber-600 mt-2">⚠️ 行程內容有更新，按上方按鈕可重新生成介紹</p>' : ''}
-                    </div>
-                `;
-            }
+            // 🔒 使用者實測回報整個健檢/介紹區塊感覺冗長：原本這裡還有一段「🍄 Kinopio 開場白」
+            // （純氣氛歡迎詞，沒有任何行程相關資訊），討論後直接拿掉，只保留下面真正有內容的健檢區塊
+            // 跟每天各自的小語/提醒（dayBlurb／weatherTips，在 generateDynamicTimeline 逐天渲染時使用）。
+            // isGeneratingNarrative 的載入動畫則保留在按鈕本身（見 regenerateAINarrative），這裡不用重複顯示。
 
             // 🩺 行程健檢：載入中顯示動畫；完成後如果 AI 潤飾成功就顯示 Kinopio 寫的建議文字，
             // AI 失敗則優雅降級，直接顯示規則引擎算出來的原始事實條列（跟卡片「⚠️ 注意事項」同一套視覺語言）
@@ -3622,10 +3605,10 @@ ${factList}
                 const sunsetBadge = daySunset
                     ? `<span class="text-[11px] font-bold text-orange-700 bg-orange-50 px-2 py-1 rounded-lg flex items-center gap-1">🌇 日落 ${formatSunsetJST(daySunset)}</span>`
                     : '';
-                // ✨ AI 天氣貼心提醒：只在 AI 有生成、且這天確實有天氣資料時顯示
+                // ✨ AI 天氣貼心提醒：只在 AI 有生成、且這天確實有天氣資料時顯示。
+                // 🔒 原本這裡分「天氣因應」跟「打包提醒」兩句，兩句內容常常互相重疊（都在講帶不帶傘），
+                // 讀起來像同一件事複述兩次——改成 prompt 只要求一句，把兩者自然寫進同一句話裡
                 const weatherTip = currentAINarrative?.weatherTips?.[`Day ${d}`];
-                // ✨ AI 打包提醒：延伸自天氣提醒的同一次呼叫，一樣只講主觀建議（帶不帶傘、防曬），不涉及任何事實數字
-                const packingTip = currentAINarrative?.packingTips?.[`Day ${d}`];
                 // ☔ 這天是否有雨：給下面每張景點卡片判斷要不要顯示「雨天備案」標記
                 const dayIsRainy = dayWeather ? isRainyWeatherCode(dayWeather.code) : false;
                 // 🕐 本地即時運算這天的時間軸（零 API 成本，拖曳/換天後每次渲染都會自動重算）
@@ -3642,13 +3625,12 @@ ${factList}
                     </div>
                 ` : '';
 
-                // 🍄 天氣提醒＋打包提醒，合併成一個區塊、共用一顆圖示——跟景點卡片「⚠️ 注意事項」同一套處理邏輯，
-                // 兩則提醒統一用同一種字級/顏色/行距，不要像以前那樣各自一行、各自一顆圖示、顏色還深淺不一
-                const kinopioTips = [weatherTip, packingTip].filter(Boolean);
-                const kinopioTipBlock = kinopioTips.length > 0
+                // 🍄 天氣提醒：現在只有一句（天氣因應＋打包提醒已合併成單一句子，見上面 weatherTip 的取值），
+                // 跟景點卡片「⚠️ 注意事項」同一套視覺語言，維持一致的字級/顏色/行距
+                const kinopioTipBlock = weatherTip
                     ? `<div class="w-full p-2.5 bg-[#f2eef4] rounded-lg text-xs text-[#564865] leading-relaxed">
                             <div class="font-bold flex items-center gap-1">🍄 Kinopio 提醒</div>
-                            <ul class="mt-1 ml-4 list-disc space-y-0.5 font-medium">${kinopioTips.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
+                            <p class="mt-1 font-medium">${escapeHtml(weatherTip)}</p>
                        </div>`
                     : '';
 
