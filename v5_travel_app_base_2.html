@@ -110,7 +110,7 @@
             from { opacity: 0; transform: translateY(36px); }
             to   { opacity: 1; transform: translateY(0); }
         }
-        .reveal-hero { animation: floatUpBig 1.4s cubic-bezier(.16,1,.3,1) both; }
+        .reveal-hero { animation: floatUpBig 2s cubic-bezier(.16,1,.3,1) both; }
         .reveal { animation: floatUp 1s cubic-bezier(.16,1,.3,1) both; }
         .reveal-d1 { animation-delay: 0.15s; }
         .reveal-d2 { animation-delay: 0.3s; }
@@ -185,15 +185,15 @@
             </p>
             <div class="flex items-center justify-center gap-3 flex-wrap mb-8">
                 <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
-                    <div class="hand text-xl font-black text-[#2c5f7c]" id="hero-count-attractions">38+</div>
+                    <div class="hand text-3xl font-black text-[#2c5f7c]" id="hero-count-attractions">38+</div>
                     <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">精選景點</div>
                 </div>
                 <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
-                    <div class="hand text-xl font-black text-[#2c5f7c]">7</div>
+                    <div class="hand text-3xl font-black text-[#2c5f7c]">7</div>
                     <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">大地區分類</div>
                 </div>
                 <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
-                    <div class="hand text-xl font-black text-[#2c5f7c]">AI</div>
+                    <div class="hand text-3xl font-black text-[#2c5f7c]">AI</div>
                     <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">客製化建議</div>
                 </div>
             </div>
@@ -232,21 +232,28 @@
                 <div id="search-box" class="flex-1 min-w-0 w-full">
                     <!-- 輸入框跟前後圖示自己包一層 relative 容器：icon 的 top-1/2 只會相對「輸入框本身」置中，
                          不會被下面另外兩行提示/狀態文字拉長整個容器高度、把圖示往下擠歪 -->
+                    <!-- 🔒 使用者討論後決定的互動改版：原本打字就即時觸發關鍵字篩選（oninput），按 Enter/點🍄
+                         則整批換成 AI 語意搜尋結果——兩段式的畫面跳動容易讓人搞不清楚「畫面上這批結果是打字篩出來
+                         的，還是 AI 找的」。改成兩條路徑都要「主動觸發」：按 Enter／點左側放大鏡＝免費關鍵字篩選
+                         （原本 handleSearch()，只是觸發時機從每個字改成送出時）；點右側🍄 Kinopio＝AI 語意搜尋（不變）。
+                         左側放大鏡從純裝飾圖示改成可點擊按鈕，手機上使用者不用去找鍵盤上不明顯的送出鍵，直接點
+                         畫面上看得到的圖示就好；`enterkeyhint="search"` 讓手機虛擬鍵盤的送出鍵直接標示「搜尋」
+                         字樣，不再是看不懂的箭頭，桌面版則完全比照原本用 Enter 鍵操作。 -->
                     <div class="relative">
-                        <svg class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                        </svg>
-                        <input type="text" id="search-input" oninput="handleSearch()" onkeydown="if(event.key==='Enter' && !event.isComposing) handleAISearch()" placeholder="搜尋關鍵字，或描述你想要的景點後按 Enter 讓 Kinopio 找"
-                        class="w-full pl-10 pr-28 py-2.5 text-sm bg-[#faf6ee] border border-[#d8cba8] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#2c5f7c] focus:border-transparent transition shadow-sm">
+                        <button type="button" onclick="handleSearch()" title="篩選關鍵字" aria-label="篩選關鍵字" class="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[#eaf1f4] hover:bg-[#dde7ea] active:bg-[#c3d3d9] border border-[#c3d3d9] flex items-center justify-center text-[#5c7a8a] transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                        </button>
+                        <input type="text" id="search-input" enterkeyhint="search" onkeydown="if(event.key==='Enter' && !event.isComposing) handleSearch()" placeholder="搜尋景點關鍵字"
+                        class="w-full pl-12 pr-28 py-2.5 text-sm bg-[#faf6ee] border border-[#d8cba8] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#2c5f7c] focus:border-transparent transition shadow-sm">
                         <!-- 🍄 Kinopio：這個 App 的 AI 助理角色，帶路的嚮導人設。按鈕維持圖示為主（空間有限），
                              完整名字放在 title 提示跟下方說明文字裡 -->
                         <button id="ai-search-btn" onclick="handleAISearch()" title="用自然語言描述，讓 Kinopio 幫你找景點（例如：適合下雨天的室內景點）" class="absolute right-2 top-1/2 -translate-y-1/2 h-8 px-3 rounded-full bg-[#e3dae8] hover:bg-[#cab8d4] active:bg-[#9678a5] text-[#564865] text-xs font-bold flex items-center gap-1 transition whitespace-nowrap">
                             <span>🍄</span> Kinopio
                         </button>
                     </div>
-                    <!-- 澄清打字跟按 Enter 是兩套不同邏輯：打字＝即時關鍵字比對（涵蓋所有符合字串的景點），
-                         按 Enter／點🍄＝整段送給 Kinopio 做語意判斷後「取代」原本結果，不一定涵蓋關鍵字能找到的每一筆 -->
-                    <p class="mt-1.5 text-[11px] text-slate-400">打字即時篩選關鍵字・按 Enter 或點右側「🍄 Kinopio」改用 AI 依語意重新尋找（結果可能不同）</p>
+                    <p class="mt-1.5 text-[11px] text-slate-400">點 Enter／🔍 篩選關鍵字，點 🍄 Kinopio 給你其他靈感（結果可能不同）</p>
                     <p id="ai-search-status" class="hidden mt-1.5 text-[11px] text-[#6b5a7a] font-bold items-center gap-2"></p>
                 </div>
             </div>
@@ -318,11 +325,11 @@
             <div class="flex items-center gap-4 mb-3 text-xs font-bold text-[#37505f]">
                 <label class="flex items-center gap-1.5 cursor-pointer">
                     <input type="radio" name="flight-type" value="arrival" checked onchange="updateFlightDateConstraints()">
-                    🛬 去程（抵達大阪，加到行程開頭）
+                    🛬 去程（抵達大阪）
                 </label>
                 <label class="flex items-center gap-1.5 cursor-pointer">
                     <input type="radio" name="flight-type" value="departure" onchange="updateFlightDateConstraints()">
-                    🛫 回程（離開大阪，加到行程結尾）
+                    🛫 回程（離開大阪）
                 </label>
             </div>
             <div class="flex flex-col sm:flex-row gap-2 sm:items-end">
@@ -351,9 +358,6 @@
             </div>
             <p id="flight-date-warning" class="text-[11px] text-amber-600 mt-1 hidden"></p>
             <p id="flight-lookup-status" class="text-[11px] text-[#5c7a8a] mt-2"></p>
-            <!-- 提醒使用者：查到去程航班日期後，天氣預報跟 Kinopio 打包提醒才會有資料可以顯示，
-                 不然這兩個功能會一直悄悄地不出現、使用者也不知道要怎麼觸發 -->
-            <p class="text-[11px] text-[#8ba7b3] mt-1">💡 查詢去程航班、確定抵達日期後，這裡下方會自動顯示大阪天氣預報，Kinopio 也會幫你寫打包提醒</p>
         </div>
 
         <!-- AI 智能時間軸區塊 (新增) -->
@@ -1685,9 +1689,12 @@
             renderCards();
         }
 
+        // 🔍 免費的本地關鍵字篩選：按 Enter 或點輸入框左側放大鏡按鈕才觸發（原本是打字就即時觸發，
+        // 使用者反映打字馬上有結果、按 Enter 又整批被 AI 結果取代，兩段式跳動容易搞不清楚哪批結果是怎麼來的，
+        // 改成兩條路徑都要主動觸發，跟右側「🍄 Kinopio」AI 語意搜尋各自獨立、互不干擾）
         function handleSearch() {
             currentKeyword = document.getElementById('search-input').value.trim().toLowerCase();
-            // 使用者重新打字了，代表這次的關鍵字跟上次 AI 搜尋的描述不同了，先跳出 AI 搜尋結果、退回即時關鍵字篩選
+            // 這次是關鍵字篩選，代表使用者不是要看上次 AI 搜尋的結果，先跳出 AI 搜尋結果、退回關鍵字篩選
             aiSearchResultIds = null;
             document.getElementById('ai-search-status').classList.add('hidden');
             renderCards();
