@@ -354,24 +354,6 @@
             <p class="text-xs text-slate-400">請嘗試更換搜尋關鍵字或分類標籤</p>
         </div>
 
-        <!-- 🎨 AI 客製化風格輸入區塊 -->
-        <!-- 配色統一用紫色系（跟 ✨ AI 搜尋按鈕、AI 寫的行程介紹輸出框同一組）：這顆按鈕本身就是在
-             觸發 AI 生成內容，跟其他 AI 功能性質相同，紫色代表「這是 AI 功能」，不分大面板還是小按鈕。
-             航班查詢區塊不是 AI 功能，維持獨立的藍靛色系，兩者刻意不同色 -->
-        <div id="ai-style-input-section" class="hidden mt-8 p-5 bg-[#f2eef4] border border-[#e3dae8] rounded-2xl">
-            <h3 class="hand text-sm font-bold text-[#2e2639] flex items-center gap-2 mb-3">
-                <span>🍄</span> 告訴 Kinopio 你想要的旅遊風格，讓行程更有你的味道
-            </h3>
-            <div class="flex flex-col sm:flex-row gap-2">
-                <input type="text" id="ai-style-input" placeholder="例如：親子、美食控、拍照打卡、慢步調..."
-                    class="flex-1 px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#cab8d4] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#9678a5]">
-                <button onclick="regenerateAINarrative()" id="ai-narrative-btn"
-                    class="px-5 py-2.5 text-sm font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-xl transition shrink-0">
-                    🍄 讓 Kinopio 重新幫你寫行程
-                </button>
-            </div>
-        </div>
-
         <!-- AI 智能時間軸區塊 (新增) -->
         <div id="timeline-container" class="reveal mt-8 pt-10 border-t border-[#d8cba8] hidden">
             <!-- 這裡會由 JS 自動動態渲染出精美的垂直時間軸 -->
@@ -574,10 +556,12 @@
         let currentDepartureFlight = null; // 🛫 回程航班，插入時間軸最後面
         let currentArrivalQueryDate = null;   // 去程查詢時輸入的日期，用來限制回程日期不能選更早
         let currentDepartureQueryDate = null; // 回程查詢時輸入的日期，用來限制去程日期不能選更晚
-        let currentAINarrative = null;     // ✨ AI生成的行程開場白（含每天的小語）
-        let isGeneratingNarrative = false; // ✨ 是否正在呼叫AI（用來顯示載入動畫）
 
-        // 🩺 行程健檢：{ issues: string[]（規則引擎抓到的事實）, summary: string（Kinopio 潤飾過的文字）, snapshot }
+        // 🩺 行程健檢與提醒：{ issues: string[]（規則引擎抓到的事實）, summary: string（Kinopio 潤飾過的文字，
+        // 現在涵蓋步調分析＋整趟天氣提醒＋打包提醒）, snapshot }
+        // 🔒 原本獨立的「AI 寫行程」功能（開場白／每日小語／天氣打包提醒）已經整個併進健檢按鈕，
+        // 使用者實測回報那個功能砍掉開場白、合併天氣打包提醒之後，剩下的價值太薄，不值得單獨佔一顆按鈕，
+        // 乾脆把僅存的「天氣＋打包提醒」也交給健檢一次寫完，兩個 AI 功能合併成一個，觸發門檻自然一致
         let currentHealthCheck = null;
         let isRunningHealthCheck = false;
         let hasNudgedHealthCheck = false; // 避免「所有景點都排定」這個狀態的主動提醒 Toast 重複跳出
@@ -641,10 +625,11 @@
         const getAiSearchDailyState = () => getDailyUsageState('travel_kb_aisearch_daily');
         const incrementAiSearchDailyCount = () => incrementDailyUsageCount('travel_kb_aisearch_daily');
 
-        // AI 開場白：一趟行程通常只會生成／重新生成幾次（調整風格後再試一次），不需要太寬
-        const AI_NARRATIVE_DAILY_LIMIT = 5;
-        const getAiNarrativeDailyState = () => getDailyUsageState('travel_kb_ainarrative_daily');
-        const incrementAiNarrativeDailyCount = () => incrementDailyUsageCount('travel_kb_ainarrative_daily');
+        // 🩺 行程健檢與提醒：原本「AI 寫行程」（開場白／每日小語／天氣打包提醒）已經整個併進這顆按鈕，
+        // 一次點擊可能對應一次 Gemini 呼叫，一趟行程通常調整個幾次就會定案，不需要太寬
+        const HEALTH_CHECK_DAILY_LIMIT = 5;
+        const getHealthCheckDailyState = () => getDailyUsageState('travel_kb_healthcheck_daily');
+        const incrementHealthCheckDailyCount = () => incrementDailyUsageCount('travel_kb_healthcheck_daily');
 
         // 航班查詢：AeroDataBox 免費額度最緊繃（約 300 次查詢／月），一個人規劃一趟行程通常查
         // 去程＋回程 2 次、頂多打錯重查一兩次，上限給最保守
@@ -1060,6 +1045,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             loadSavedItinerary();
             loadDayPlan();
+            loadHealthCheck(); // 🩺 還原之前生成過的健檢與提醒內容，避免重新整理後花額度生成的文字憑空消失
             loadChecklistState();
             loadFlightInfo(); // ✈️ 還原之前查詢過的航班資訊，避免重新整理後航班卡片憑空消失
             updateFlightDateConstraints();
@@ -1154,6 +1140,32 @@
                 localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes, stayOverrides }));
             } catch (e) {
                 console.error("LocalStorage save error (dayplan):", e);
+            }
+        }
+
+        // 🩺 讀取／儲存「行程健檢與提醒」結果，比照分天計畫存進目前帳號自己的範圍。
+        // 🔒 使用者實測回報：這是要真的花 API 額度才生成的內容，重新整理頁面就憑空消失很可惜——
+        // 原本 currentHealthCheck 只是記憶體變數，沒有比照其他行程資料存進 LocalStorage，這裡補上。
+        // 沿用既有的 snapshot 過期偵測機制：內容還是照樣存/讀，畫面該顯示「行程內容有更新」的提示還是會顯示，
+        // 不會有「存了舊資料卻誤導使用者」的風險。
+        function loadHealthCheck() {
+            currentHealthCheck = null;
+            try {
+                const saved = localStorage.getItem(scopedKey('travel_kb_healthcheck'));
+                if (saved) currentHealthCheck = JSON.parse(saved);
+            } catch (e) {
+                console.error("LocalStorage load error (healthcheck):", e);
+            }
+        }
+        function saveHealthCheck() {
+            try {
+                if (currentHealthCheck) {
+                    localStorage.setItem(scopedKey('travel_kb_healthcheck'), JSON.stringify(currentHealthCheck));
+                } else {
+                    localStorage.removeItem(scopedKey('travel_kb_healthcheck'));
+                }
+            } catch (e) {
+                console.error("LocalStorage save error (healthcheck):", e);
             }
         }
 
@@ -1928,9 +1940,6 @@ ${list}
                 return;
             }
             if (timelineContainer) timelineContainer.classList.add('hidden');
-            // ✨ AI 客製化風格輸入區塊只屬於「我的行程」頁籤的時間軸，「所有景點」頁籤一律隱藏
-            // （這個 class 只在 generateDynamicTimeline 裡被移除，切回「所有景點」頁籤時要在這裡主動補上 hidden）
-            document.getElementById('ai-style-input-section').classList.add('hidden');
 
             // 📍 純瀏覽（沒打關鍵字、沒用 AI 搜尋）用地區橫向排；一旦開始搜尋，改回原本的格狀清單，
             // 因為那個模式更適合「比對結果」。分類 Chips 兩種模式都要顯示，維持原本篩選功能不受影響。
@@ -2861,6 +2870,7 @@ ${list}
         function reloadScopedDataAndRerender() {
             loadSavedItinerary();
             loadDayPlan();
+            loadHealthCheck(); // 🩺 換帳號範圍時，改讀這個帳號自己存過的健檢與提醒內容（沒有就是 null）
             loadChecklistState();
             pruneDayPlan();
             saveDayPlan(); // pruneDayPlan 可能清掉幽靈 id，順手存回去保持一致
@@ -2879,11 +2889,9 @@ ${list}
                 fetchSunsetTimes();
             }
 
-            // 🍄 AI 開場白不屬於任何帳號範圍、只存在記憶體裡，切換身份後對舊帳號的行程內容已經不對，直接清空
-            currentAINarrative = null;
-            isGeneratingNarrative = false;
-            // 🩺 行程健檢結果同理，不屬於任何帳號範圍，切換身份後直接清空、提醒狀態也一併重置
-            currentHealthCheck = null;
+            // 🩺 行程健檢與提醒現在已經比照其他行程資料存進 LocalStorage（依帳號範圍分開存），
+            // 上面 loadHealthCheck() 已經讀好這個帳號自己的內容了，這裡不用再手動清空；
+            // 執行狀態、提醒旗標維持重置，這兩個是純畫面狀態，不屬於任何帳號範圍
             isRunningHealthCheck = false;
             hasNudgedHealthCheck = false;
 
@@ -2924,108 +2932,9 @@ ${list}
             return lines.join('\n');
         }
 
-        /**
-         * ✨ 呼叫 Gemini API，依選取的景點、天氣預報與使用者風格偏好，生成客製化的各天小語與天氣提醒
-         * 設計原則：AI只負責「寫有溫度的文字」，不負責排序或計算時間，降低出錯風險
-         * 回傳格式要求AI輸出JSON，失敗時回傳null，讓畫面自動退回原本的制式文字（優雅降級）
-         *
-         * 🔒 使用者實測回報這個區塊「感覺冗長、內容重複」，討論後拿掉了兩個東西：
-         * ① 原本還有一段「opening」開場白（純氣氛歡迎詞，沒有任何行程相關資訊），砍掉不影響功能；
-         * ② 原本天氣因應「weatherTips」跟打包提醒「packingTips」是兩個獨立欄位，AI 各寫一句，
-         *    兩句本質上都在講「要不要帶傘」，只是換句話說，讀起來像同一件事複述兩次——改成只要求
-         *    一個欄位，把因應建議跟打包提醒直接寫進同一句話，資訊只出現一次。
-         */
-        async function callGeminiForNarrative(selectedAttractions, groupedByDay, styleInput) {
-            const attractionList = Object.entries(groupedByDay)
-                .map(([day, items]) => `【${day}】${items.map(i => i.name).join('、')}`)
-                .join('\n');
-            const weatherContext = buildWeatherContextForDays(groupedByDay);
-
-            const prompt = `你是一個溫暖、有畫面感的旅遊行程小編。使用者選了以下大阪景點，已經依天數排好順序：
-${attractionList}
-
-${styleInput ? `使用者特別提到想要的旅遊風格：「${styleInput}」，請讓文字語氣呼應這個風格。` : ''}
-
-${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n請針對這幾天，各給「一句」實用建議，把天氣因應（例如要不要帶傘、室內或戶外景點怎麼安排）跟打包提醒（防曬、薄外套、備用鞋這類主觀建議，不要提到具體品牌或數字價格）自然地寫進同一句話裡，不要分成兩句各講一半。` : ''}
-
-請你只輸出一個JSON物件（不要有其他文字、不要用markdown code fence包起來），格式如下：
-{
-  "dayBlurbs": { "Day 1": "一句15-25字、有畫面感的小語，形容這天的行程氛圍", "Day 2": "..." }${weatherContext ? `,
-  "weatherTips": { "Day 1": "一句20-35字、同時涵蓋天氣因應跟打包提醒的建議，只針對上面有列出天氣預報的那幾天生成" }` : ''}
-}
-
-注意：dayBlurbs、weatherTips的key都必須完全對應上面【】裡的天數標籤（例如「Day 1」）。不要提到任何具體的營業時間、門票價格、評分數字等事實性資訊，只寫氛圍、感受與主觀建議，這些數字容易過時，交給其他區塊呈現即可。`;
-
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-goog-api-key': GEMINI_API_KEY
-                },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }]
-                })
-            });
-
-            if (!res.ok) throw new Error(`AI生成失敗（狀態碼 ${res.status}）`);
-
-            const data = await res.json();
-            let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            // 防呆：即使有交代不要包markdown code fence，AI偶爾還是會包，這裡順手拆掉
-            text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-
-            const parsed = JSON.parse(text);
-            if (!parsed.dayBlurbs) throw new Error('AI回傳格式不完整');
-            return parsed;
-        }
-
-        // ✨ 按鈕觸發：重新呼叫AI生成行程敘事文字
-        async function regenerateAINarrative() {
-            const selectedAttractions = attractionsData.filter(item => myItineraryIds.has(item.id));
-            if (selectedAttractions.length === 0) {
-                showToast('請先勾選至少一個景點', false);
-                return;
-            }
-
-            const groupedByDay = groupAttractionsByDay(selectedAttractions);
-            if (Object.keys(groupedByDay).length === 0) {
-                showToast('請先把景點拖曳排入某一天，Kinopio 才能依天數幫你寫介紹', false);
-                return;
-            }
-            if (getAiNarrativeDailyState().count >= AI_NARRATIVE_DAILY_LIMIT) {
-                showToast(`今天已經請 Kinopio 寫 ${AI_NARRATIVE_DAILY_LIMIT} 次介紹囉，明天再回來試試！`, false);
-                return;
-            }
-
-            const styleInput = document.getElementById('ai-style-input').value.trim();
-            const btn = document.getElementById('ai-narrative-btn');
-
-            isGeneratingNarrative = true;
-            btn.disabled = true;
-            btn.textContent = '🍄 Kinopio 撰寫中...';
-            generateDynamicTimeline(); // 立刻重新渲染，顯示載入動畫
-
-            try {
-                currentAINarrative = await callGeminiForNarrative(selectedAttractions, groupedByDay, styleInput);
-                currentAINarrative.snapshot = getItineraryStructureSnapshot(); // 記錄這份文字是依哪個分天結構生成的（不只是選了哪些景點）
-                incrementAiNarrativeDailyCount(); // 真的成功才計次
-                showToast('Kinopio 已為你重新撰寫行程介紹！', true);
-            } catch (err) {
-                console.error('AI敘事生成錯誤：', err);
-                currentAINarrative = null;
-                showToast(`Kinopio 迷路了，暫時顯示預設文字（${err.message}）`, false);
-            } finally {
-                isGeneratingNarrative = false;
-                btn.disabled = false;
-                btn.textContent = '🍄 讓 Kinopio 重新幫你寫行程';
-                generateDynamicTimeline();
-            }
-        }
-
-        // ✨ AI 敘事「是否過期」判斷用的完整快照：不能只比對「選了哪些景點」，
+        // ✨ 健檢/提醒「是否過期」判斷用的完整快照：不能只比對「選了哪些景點」，
         // 還要包含「排在哪一天、順序為何」，否則把景點從 Day1 拖到 Day2（選取的 id 集合完全沒變）
-        // 或增減 dayCount 時，dayBlurbs／weatherTips 早就對不上實際分天結果，卻不會被判定為過期。
+        // 或增減 dayCount 時，健檢摘要早就對不上實際分天結果，卻不會被判定為過期。
         function getItineraryStructureSnapshot() {
             return JSON.stringify({ dayCount, dayPlan, unassigned: [...unassignedIds].sort(), stayOverrides });
         }
@@ -3058,17 +2967,23 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             return facts;
         }
 
-        // 🩺 把規則引擎抓到的事實交給 Gemini，請它只負責改寫成溫暖好讀的建議文字——
+        // 🩺 把規則引擎抓到的事實＋天氣預報交給 Gemini，請它整合寫成一段健檢建議——
+        // 🔒 原本獨立的「AI 寫行程」功能（開場白／每日小語／天氣打包提醒）已經整個併進這裡：
+        // 使用者實測回報那個功能只剩「天氣＋打包提醒」還有點價值，卻要另外佔一個輸入框＋按鈕，
+        // 不值得；改成健檢一次寫完步調分析＋整趟行程的天氣提醒＋打包提醒，觸發條件、每日額度都共用同一套。
         // 提示詞比照 buildChatSystemPrompt 的限制：不能新增清單以外的推測、不能建議資料庫沒有的景點
-        async function callGeminiForHealthCheck(facts) {
-            const factList = facts.map(f => `- ${f}`).join('\n');
-            const prompt = `你是「Kinopio」🍄，旅圖知情所這個大阪自由行網站的旅遊助理。以下是系統規則引擎自動抓出來、已經確定的行程排程事實，不是你自己判斷出來的：
-${factList}
+        async function callGeminiForHealthCheck(facts, weatherContext) {
+            const factList = facts.length > 0 ? facts.map(f => `- ${f}`).join('\n') : '（沒有偵測到步調過緊的狀況）';
+            const prompt = `你是「Kinopio」🍄，旅圖知情所這個大阪自由行網站的旅遊助理。以下是系統規則引擎跟天氣預報自動抓出來、已經確定的行程資訊，不是你自己判斷出來的：
 
-請把這些事實改寫成給旅人看的健檢建議，語氣溫暖、精簡、口語化，2-4句話即可。只能根據上面列出的事實改寫，不要新增清單以外的推測或建議（例如不要建議「改去哪個景點」，資料庫以外的景點你不清楚細節，不要提）。
+行程步調分析：
+${factList}
+${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
+
+請把上面的資訊整合寫成一段給旅人看的健檢建議，依序涵蓋：①行程步調（緊不緊湊，只依上面列出的事實講，沒有偏緊的日子就不用特別提）；②整趟行程的天氣提醒（哪幾天預報可能下雨，用天數彙整著講，例如「第2、3天容易下雨」，不要逐天各寫一句）；③簡短的打包提醒（依天氣狀況給主觀建議，例如帶傘/防曬/薄外套，不要提到具體品牌或數字價格）。語氣溫暖、口語化，但整段字數控制在 4-6 句以內，不要落落長。只能根據上面列出的事實跟天氣資料改寫，不要新增清單以外的推測或建議；也不要提到景點的營業時間、公休日、門票價格，這些個別景點的資訊已經顯示在對應的景點卡片上了，這裡不用重複。
 
 請只輸出一個JSON物件（不要有其他文字、不要用markdown code fence包起來），格式如下：
-{ "summary": "2-4句話的健檢建議文字" }`;
+{ "summary": "整合步調分析＋天氣提醒＋打包提醒的一段健檢建議文字，4-6句話" }`;
 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
             const res = await fetch(url, {
@@ -3094,28 +3009,39 @@ ${factList}
                 showToast('至少要有一天排入 2 個以上景點，Kinopio 才有東西可以健檢', false);
                 return;
             }
+            if (getHealthCheckDailyState().count >= HEALTH_CHECK_DAILY_LIMIT) {
+                showToast(`今天已經請 Kinopio 健檢＋提醒 ${HEALTH_CHECK_DAILY_LIMIT} 次囉，明天再回來試試！`, false);
+                return;
+            }
 
             const facts = collectItineraryHealthFacts();
+            const selectedAttractions = attractionsData.filter(item => myItineraryIds.has(item.id));
+            const groupedByDay = groupAttractionsByDay(selectedAttractions);
+            const weatherContext = buildWeatherContextForDays(groupedByDay);
+
             const btn = document.getElementById('health-check-btn');
             isRunningHealthCheck = true;
             if (btn) { btn.disabled = true; btn.textContent = '🩺 Kinopio 健檢中...'; }
             generateDynamicTimeline();
 
             try {
-                if (facts.length === 0) {
-                    currentHealthCheck = { issues: [], summary: '目前每天的步調看起來都還算從容，沒有排太趕的狀況！（超時／公休／下雨這類提醒會直接顯示在個別景點卡片上，這裡不重複列出）', snapshot: getItineraryStructureSnapshot() };
+                if (facts.length === 0 && !weatherContext) {
+                    currentHealthCheck = { issues: [], summary: '目前行程步調適中，天氣預報也沒有特別需要留意的地方，可以放心規劃！', snapshot: getItineraryStructureSnapshot() };
                 } else {
-                    const summary = await callGeminiForHealthCheck(facts);
+                    const summary = await callGeminiForHealthCheck(facts, weatherContext);
                     currentHealthCheck = { issues: facts, summary, snapshot: getItineraryStructureSnapshot() };
+                    incrementHealthCheckDailyCount(); // 真的呼叫 AI 才計次，單純顯示「一切都好」不用花額度
                 }
-                showToast('Kinopio 幫你健檢完成了！', true);
+                saveHealthCheck(); // 🩺 存進 LocalStorage，重新整理頁面不會憑空消失
+                showToast('Kinopio 幫你健檢＋整理提醒完成了！', true);
             } catch (err) {
                 console.error('行程健檢 AI 潤飾失敗：', err);
                 currentHealthCheck = { issues: facts, summary: null, snapshot: getItineraryStructureSnapshot() };
+                saveHealthCheck();
                 showToast('Kinopio 潤飾文字時迷路了，先顯示原始健檢結果', false);
             } finally {
                 isRunningHealthCheck = false;
-                if (btn) { btn.disabled = false; btn.textContent = '🩺 幫我健檢行程'; }
+                if (btn) { btn.disabled = false; btn.textContent = '🩺 幫我健檢＋整趟提醒'; }
                 generateDynamicTimeline();
             }
         }
@@ -3474,7 +3400,6 @@ ${factList}
 
             // 如果行程是空的，優雅呈現提示
             if (selectedCount === 0) {
-                document.getElementById('ai-style-input-section').classList.add('hidden');
                 timelineContainer.innerHTML = `
                     <div class="py-12 text-center text-slate-400">
                         <p class="text-3xl">🧭</p>
@@ -3484,7 +3409,6 @@ ${factList}
                 `;
                 return;
             }
-            document.getElementById('ai-style-input-section').classList.remove('hidden');
 
             // 📥 未分配區：放在「Kinopio 風格輸入」跟「手動排程行程表」之間，一進「我的行程」頁籤
             // 就先看到還沒排的待辦清單，再往下才是已經排好的正式行程
@@ -3510,14 +3434,18 @@ ${factList}
                                 <span class="text-sm font-black text-[#2c5f7c] w-5 text-center">${dayCount}</span>
                                 <button onclick="setDayCount(${dayCount + 1})" class="w-6 h-6 rounded-lg bg-[#faf6ee] shadow-sm text-slate-600 font-bold text-sm hover:bg-[#f5ecd9]" ${dayCount >= 14 ? 'disabled' : ''}>＋</button>
                             </div>
-                            <!-- 🩺 行程健檢：搬到這裡（跟「總天數」並排），因為健檢是針對整份手動排程行程表
-                                 的操作，跟上面「AI 風格輸入」區塊（只跟生成開場白有關）語意上不相關，
-                                 放在同一個框裡容易讓人誤會兩者有先後順序。配色沿用搜尋列「🍄 Kinopio」
-                                 按鈕的色號，尺寸比照旁邊「總天數」控制項的高度 -->
+                            <!-- 🩺 行程健檢與提醒：跟「總天數」並排，針對整份手動排程行程表的操作。
+                                 配色沿用搜尋列「🍄 Kinopio」按鈕的色號，尺寸比照旁邊「總天數」控制項的高度。
+                                 🔒 原本獨立的「AI 寫行程」（風格輸入框＋按鈕）已經整個併進這顆按鈕——使用者
+                                 實測回報那個功能砍到只剩「天氣＋打包提醒」後，價值太薄不值得單獨佔一塊版面，
+                                 乾脆一次點擊就把步調分析／天氣提醒／打包提醒全部生成，也一併沿用同一個每日
+                                 額度上限，button 旁邊直接標註次數，讓使用者一開始就知道限制，不用點到卡住才知道 -->
                             <button onclick="runHealthCheck()" id="health-check-btn"
-                                class="h-9 px-3 rounded-xl bg-[#e3dae8] hover:bg-[#cab8d4] active:bg-[#9678a5] text-[#564865] text-xs font-bold transition whitespace-nowrap">
-                                🩺 幫我健檢行程
+                                class="h-9 px-3 rounded-xl bg-[#e3dae8] hover:bg-[#cab8d4] active:bg-[#9678a5] text-[#564865] text-xs font-bold transition whitespace-nowrap"
+                                title="生成整趟行程的步調分析、天氣提醒與打包建議，每天最多 ${HEALTH_CHECK_DAILY_LIMIT} 次">
+                                🩺 幫我健檢＋整趟提醒
                             </button>
+                            <span class="text-[10.5px] text-slate-400 font-medium whitespace-nowrap">每天最多 ${HEALTH_CHECK_DAILY_LIMIT} 次</span>
                         </div>
                     </div>
             `;
@@ -3537,19 +3465,18 @@ ${factList}
                 `;
             }
 
-            // 🔒 使用者實測回報整個健檢/介紹區塊感覺冗長：原本這裡還有一段「🍄 Kinopio 開場白」
-            // （純氣氛歡迎詞，沒有任何行程相關資訊），討論後直接拿掉，只保留下面真正有內容的健檢區塊
-            // 跟每天各自的小語/提醒（dayBlurb／weatherTips，在 generateDynamicTimeline 逐天渲染時使用）。
-            // isGeneratingNarrative 的載入動畫則保留在按鈕本身（見 regenerateAINarrative），這裡不用重複顯示。
+            // 🔒 使用者實測回報整個健檢/介紹區塊感覺冗長、內容重複：原本這裡還有一段「🍄 Kinopio 開場白」
+            // （純氣氛歡迎詞）、每天各自的小語（dayBlurb）、每天的天氣打包提醒（weatherTip），
+            // 討論後決定全部拿掉，統一併進下面的健檢區塊一次生成（步調分析＋整趟行程天氣提醒＋打包提醒）。
 
-            // 🩺 行程健檢：載入中顯示動畫；完成後如果 AI 潤飾成功就顯示 Kinopio 寫的建議文字，
+            // 🩺 行程健檢與提醒：載入中顯示動畫；完成後如果 AI 潤飾成功就顯示 Kinopio 寫的建議文字，
             // AI 失敗則優雅降級，直接顯示規則引擎算出來的原始事實條列（跟卡片「⚠️ 注意事項」同一套視覺語言）
             if (isRunningHealthCheck) {
                 timelineHTML += `
                     <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4 animate-pulse">
                         <div class="h-3 bg-[#cab8d4] rounded w-3/4 mb-2"></div>
                         <div class="h-3 bg-[#cab8d4] rounded w-1/2"></div>
-                        <p class="text-[11px] text-[#9678a5] mt-2">🩺 Kinopio 正在幫你健檢行程...</p>
+                        <p class="text-[11px] text-[#9678a5] mt-2">🩺 Kinopio 正在幫你健檢＋整理提醒...</p>
                     </div>
                 `;
             } else if (currentHealthCheck) {
@@ -3558,10 +3485,10 @@ ${factList}
                     ? `<p class="text-sm text-[#2e2639] leading-relaxed">${escapeHtml(currentHealthCheck.summary)}</p>`
                     : (currentHealthCheck.issues.length > 0
                         ? `<ul class="mt-1 ml-4 list-disc space-y-0.5 text-xs text-amber-800">${currentHealthCheck.issues.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`
-                        : `<p class="text-sm text-[#6b8f71] leading-relaxed">目前排程看起來很順，沒有發現明顯的時間或天氣衝突！</p>`);
+                        : `<p class="text-sm text-[#6b8f71] leading-relaxed">目前行程步調適中，天氣預報也沒有特別需要留意的地方，可以放心規劃！</p>`);
                 timelineHTML += `
                     <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-2xl p-4">
-                        <div class="text-[11px] font-bold text-[#9678a5] mb-1">🩺 Kinopio 的行程健檢</div>
+                        <div class="text-[11px] font-bold text-[#9678a5] mb-1">🩺 Kinopio 的行程健檢與提醒</div>
                         ${bodyHTML}
                         ${isHealthCheckStale ? '<p class="text-[11px] font-bold text-amber-600 mt-2">⚠️ 行程內容有更新，按上方按鈕可重新健檢</p>' : ''}
                     </div>
@@ -3592,7 +3519,6 @@ ${factList}
             // 📅 依天數渲染每一天的排程區塊
             for (let d = 1; d <= dayCount; d++) {
                 const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
-                const dayBlurb = currentAINarrative?.dayBlurbs?.[`Day ${d}`] || '';
                 const dayDate = getDateForDayIndex(d);
                 const dayLabel = dayDate ? `Day ${d}・${formatDateLabel(dayDate)}` : `Day ${d}`;
                 // 🌤️ 這天若查得到天氣預報就顯示小徽章；查不到（旅遊日期太遠、還沒查航班）就靜默不顯示
@@ -3605,10 +3531,6 @@ ${factList}
                 const sunsetBadge = daySunset
                     ? `<span class="text-[11px] font-bold text-orange-700 bg-orange-50 px-2 py-1 rounded-lg flex items-center gap-1">🌇 日落 ${formatSunsetJST(daySunset)}</span>`
                     : '';
-                // ✨ AI 天氣貼心提醒：只在 AI 有生成、且這天確實有天氣資料時顯示。
-                // 🔒 原本這裡分「天氣因應」跟「打包提醒」兩句，兩句內容常常互相重疊（都在講帶不帶傘），
-                // 讀起來像同一件事複述兩次——改成 prompt 只要求一句，把兩者自然寫進同一句話裡
-                const weatherTip = currentAINarrative?.weatherTips?.[`Day ${d}`];
                 // ☔ 這天是否有雨：給下面每張景點卡片判斷要不要顯示「雨天備案」標記
                 const dayIsRainy = dayWeather ? isRainyWeatherCode(dayWeather.code) : false;
                 // 🕐 本地即時運算這天的時間軸（零 API 成本，拖曳/換天後每次渲染都會自動重算）
@@ -3624,15 +3546,6 @@ ${factList}
                         <button onclick="setDayStartTime(1, '${earliestStart}')" class="px-2 py-0.5 text-white bg-amber-600 hover:bg-amber-700 rounded-lg">套用抵達時間</button>
                     </div>
                 ` : '';
-
-                // 🍄 天氣提醒：現在只有一句（天氣因應＋打包提醒已合併成單一句子，見上面 weatherTip 的取值），
-                // 跟景點卡片「⚠️ 注意事項」同一套視覺語言，維持一致的字級/顏色/行距
-                const kinopioTipBlock = weatherTip
-                    ? `<div class="w-full p-2.5 bg-[#f2eef4] rounded-lg text-xs text-[#564865] leading-relaxed">
-                            <div class="font-bold flex items-center gap-1">🍄 Kinopio 提醒</div>
-                            <p class="mt-1 font-medium">${escapeHtml(weatherTip)}</p>
-                       </div>`
-                    : '';
 
                 timelineHTML += `
                     <div>
@@ -3659,13 +3572,8 @@ ${factList}
                         </div>
                         <!-- 📝 AI 小語獨立一行放在標題列下方，不再塞進 Day 徽章裡——徽章塞進一整句話會被撐得又寬又不固定，
                              跟天氣/日落徽章擠在同一個自動換行的橫排裡，長度一撐大就會把天氣/日落擠到下一行 -->
-                        ${dayBlurb
-                            ? `<p class="text-xs text-slate-500 italic mb-3">${escapeHtml(dayBlurb)}</p>`
-                            : (dayItems.length > 0 ? `<p class="text-xs text-slate-400 mb-3">共 ${dayItems.length} 個景點</p>` : '')}
-                        <div class="flex flex-wrap items-center gap-2 mb-3">
-                            ${kinopioTipBlock}
-                            ${startTimeWarning}
-                        </div>
+                        ${dayItems.length > 0 ? `<p class="text-xs text-slate-400 mb-3">共 ${dayItems.length} 個景點</p>` : ''}
+                        ${startTimeWarning ? `<div class="flex flex-wrap items-center gap-2 mb-3">${startTimeWarning}</div>` : ''}
                         <div class="pl-9 ml-3.5 border-l-2 border-[#d3e3e9] space-y-3 pb-1 min-h-[3.5rem]"
                              ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, ${d})">
                             ${dayItems.length === 0
