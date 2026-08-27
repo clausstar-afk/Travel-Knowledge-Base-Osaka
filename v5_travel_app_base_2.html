@@ -3296,7 +3296,7 @@ ${factList}
             const warningItems = [];
             if (scheduleEntry?.outOfHours) warningItems.push(`可能超出營業時間（${safeHours}），建議調整順序或出發時間`);
             if (isClosedToday) warningItems.push(`這天可能是公休日（${safeHours}），建議改天或上官網確認`);
-            if (isOutdoorRainy) warningItems.push('戶外景點，這天有雨');
+            if (isOutdoorRainy) warningItems.push('戶外景點，這天可能下雨');
             // 🛫 只在「最後一天的最後一個景點」才會帶進 departureFlightTime（見呼叫端），這裡直接比對結束時間
             if (departureFlightTime && scheduleEntry && clockToMinutes(formatMinutesToClock(scheduleEntry.endMin)) > clockToMinutes(departureFlightTime)) {
                 warningItems.push(`結束時間比回程航班起飛時間（${departureFlightTime}）還晚，恐怕來不及到機場，建議調整這天行程或提早結束`);
@@ -3355,14 +3355,23 @@ ${factList}
 
             // 📏 時段徽章＋補充資訊放同一行，用「・」接時段、「|」分隔各項補充資訊——
             // 每一項資訊都看得出各自的邊界，不會黏成一整串分不清楚的文字
-            const metaLineRest = [
-                staySegment,
-                lastEntryText,
-                indoorRainNote
-            ].filter(Boolean).join('<span class="text-[#cbbfa0] mx-1 font-light">|</span>');
-            const metaLine = timeBadge
-                ? `${timeBadge}<span class="text-[#d3c9ad] mx-1">・</span>${metaLineRest}`
-                : metaLineRest;
+            // 🔒 手機實測發現的排版 bug：原本整段是一串 inline span 塞進同一個 flex-wrap 容器，
+            // 瀏覽器會照「文字/空白」斷行，不是照「一整個資訊項目」斷行——遇到窄螢幕常常斷在
+            // 分隔符號正後面，讓「・」或「｜」孤零零留在行尾、下一行才接著顯示對應的內容，看起來像跑版。
+            // 改成每個資訊項目（含它前面的分隔符號）包成一個 whitespace-nowrap 的區塊，斷行只會發生在
+            // 「整個項目」之間，不會再把分隔符號跟它要接的內容拆開。
+            const metaAtoms = [];
+            if (timeBadge) metaAtoms.push({ html: timeBadge, sep: null });
+            [staySegment, lastEntryText, indoorRainNote].filter(Boolean).forEach((html, i) => {
+                const sep = metaAtoms.length === 0 ? null : (i === 0 ? '・' : '|');
+                metaAtoms.push({ html, sep });
+            });
+            const metaLine = metaAtoms.map(({ html, sep }) => {
+                const sepHtml = sep === '・' ? '<span class="text-[#d3c9ad] mx-1">・</span>'
+                    : sep === '|' ? '<span class="text-[#cbbfa0] mx-1 font-light">|</span>'
+                    : '';
+                return `<span class="inline-flex items-center whitespace-nowrap">${sepHtml}${html}</span>`;
+            }).join('');
 
             // 📌 地圖／官網：改用可以跟卡片其他文字同色系的 SVG 線條圖示，不用會被瀏覽器強制上色的
             // 彩色 emoji（📍原本是鮮紅色，跟卡片低彩度的暖色調完全衝突）；按鈕尺寸統一跟刪除鈕一樣 32×32px
@@ -3391,9 +3400,18 @@ ${factList}
                         <p class="text-xs text-slate-500 flex items-center flex-wrap">${metaLine}</p>
                         ${stayOverrideNote}
                         ${warningBlock}
-                        <div class="flex items-center gap-3 pt-3 border-t border-[#f5ecd9]">
-                            <span class="inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-lg bg-[#f5ecd9] text-[#6b5535]">門票：${safeTicket}・營業時間：${safeHours || '請見官網'}</span>
-                            <div class="ml-auto flex items-center gap-1.5 shrink-0">
+                        <div class="flex items-start gap-3 pt-3 border-t border-[#f5ecd9]">
+                            <!-- 🔒 手機實測發現：門票／營業時間文字長一點（例如「依店家而定」）會擠成兩行，
+                                 原本用單行 inline-flex 徽章硬塞「門票：X・營業時間：Y」，兩行文字擠進圓角膠囊
+                                 形狀的徽章裡本來就不好看，父層還用 items-center 把右側地圖/網站按鈕垂直置中，
+                                 兩行文字一撐高，按鈕就會浮在文字中間、對不齊。改成固定拆成「門票」「營業時間」
+                                 各自一行的小區塊，一開始就是設計成可以兩行顯示，不會有徽章形狀跑掉的問題；
+                                 父層改成 items-start，按鈕改成貼齊區塊頂部，不管文字幾行都維持整齊對齊 -->
+                            <div class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-[#f5ecd9] text-[#6b5535] text-xs font-bold space-y-0.5">
+                                <div><span class="font-normal text-[#8a7a5c]">門票</span> ${safeTicket}</div>
+                                <div><span class="font-normal text-[#8a7a5c]">營業時間</span> ${safeHours || '請見官網'}</div>
+                            </div>
+                            <div class="flex items-center gap-1.5 shrink-0">
                                 <a href="${getMapUrl(item)}" target="_blank" rel="noopener noreferrer" title="開啟地圖" class="${linkBtnClass}">${mapIconSvg}</a>
                                 <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟網站" class="${linkBtnClass}">${linkIconSvg}</a>
                             </div>
