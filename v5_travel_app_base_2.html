@@ -303,6 +303,18 @@
             </div>
         </div>
 
+        <!-- 📍 地區快速跳轉 Chips：使用者提出的新功能，跟下面的「分類篩選 Chips」刻意做出區隔——
+             這排是導覽用途（點了捲動到對應地區分組，景點數量不變，不做篩選），不是篩選條件，
+             視覺上刻意跟分類 Chips 不一樣：扁平無底色、底線代替實心背景、字級較小，點擊只有短暫高亮
+             （見 flashAreaChip()）不會維持選中狀態，避免使用者誤以為這是另一組篩選器。
+             跟分類 Chips 之間留 mb-4 的間距，不緊貼在一起，避免被誤認成同一組功能。
+             只在「純瀏覽」模式（地區橫排）才有意義顯示，搜尋/AI搜尋模式下沒有地區分組可以跳轉，
+             由 renderCards()／renderAreaRows() 一起控制顯示/隱藏跟內容，保持跟地區橫排完全同步
+             （分類篩選會讓某些地區整排消失，這排 chips 也要跟著少，不然點了會捲到不存在的地方）。 -->
+        <div id="area-quick-nav" class="hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 mb-4">
+            <!-- 動態注入地區跳轉標籤 -->
+        </div>
+
         <!-- 分類 Filter Chips（不隨頁面固定，維持一般捲動——只有頁籤/搜尋列是使用者要求要常駐可見的） -->
         <div id="category-chips" class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 mb-6">
             <!-- 動態注入分類標籤 -->
@@ -1999,10 +2011,10 @@ ${list}
                 });
 
             const container = document.getElementById('area-rows');
-            container.innerHTML = areasInOrder.map(area => {
+            container.innerHTML = areasInOrder.map((area, i) => {
                 const items = byArea.get(area);
                 return `
-                    <div class="mb-5">
+                    <div class="mb-5" id="area-block-${i}">
                         <div class="flex items-baseline justify-between mb-2">
                             <h3 class="hand text-sm font-black text-slate-800 flex items-center gap-1.5">📍 ${escapeHtml(area)}</h3>
                             <span class="text-[10px] font-bold text-[#9678a5] bg-[#f2eef4] px-2 py-0.5 rounded-full shrink-0">${items.length} 個景點</span>
@@ -2021,6 +2033,32 @@ ${list}
                     </div>
                 `;
             }).join('');
+
+            // 📍 地區快速跳轉 Chips：用同一份 areasInOrder 生成，天生跟上面的地區橫排（含分類篩選結果）同步，
+            // 不會有「點了某個地區卻捲不到東西」的情況。視覺特意跟分類 Chips 不同——扁平、底線、字級較小，
+            // 點擊只是 flashAreaChip() 短暫高亮再恢復，不用 currentCategory 那種持續選中的 active 狀態，
+            // 因為這只是導覽捷徑，不是篩選條件，畫面上不該一直顯示「選中」樣子誤導使用者以為有在篩選。
+            const quickNav = document.getElementById('area-quick-nav');
+            if (quickNav) {
+                if (areasInOrder.length === 0) {
+                    quickNav.classList.add('hidden');
+                    quickNav.innerHTML = '';
+                } else {
+                    quickNav.classList.remove('hidden');
+                    quickNav.innerHTML = areasInOrder.map((area, i) => `
+                        <button onclick="flashAreaChip(this); smoothScrollToId('area-block-${i}')"
+                            class="shrink-0 px-2.5 py-1 text-[11px] text-[#8a7a5c] border-b-2 border-transparent hover:text-[#5c4a2f] hover:border-[#d8cba8] transition-colors">📍 ${escapeHtml(area)}</button>
+                    `).join('');
+                }
+            }
+        }
+
+        // 📍 地區快速跳轉 Chips 的點擊反饋：只短暫高亮再恢復，不維持選中狀態（導覽用途，不是篩選條件）
+        function flashAreaChip(btn) {
+            btn.classList.add('text-[#2c5f7c]', 'border-[#2c5f7c]');
+            setTimeout(() => {
+                btn.classList.remove('text-[#2c5f7c]', 'border-[#2c5f7c]');
+            }, 500);
         }
 
         function renderCards() {
@@ -2042,6 +2080,9 @@ ${list}
                 grid.classList.add('hidden'); grid.innerHTML = '';
                 areaRows.classList.add('hidden'); areaRows.innerHTML = '';
                 emptyState.classList.add('hidden');
+                // 📍 地區快速跳轉 Chips 只在地區橫排（純瀏覽模式）才有意義，「我的行程」頁籤沒有地區分組可以捲
+                document.getElementById('area-quick-nav').classList.add('hidden');
+                document.getElementById('area-quick-nav').innerHTML = '';
                 return;
             }
             if (timelineContainer) timelineContainer.classList.add('hidden');
@@ -2057,6 +2098,9 @@ ${list}
                 return;
             }
             areaRows.classList.add('hidden'); areaRows.innerHTML = ''; // 清空，避免跟格狀清單的 card-${id} 重複
+            // 📍 搜尋/AI搜尋模式改回格狀清單，沒有地區分組，地區快速跳轉 Chips 一併隱藏清空
+            document.getElementById('area-quick-nav').classList.add('hidden');
+            document.getElementById('area-quick-nav').innerHTML = '';
 
             // 篩選過濾邏輯（只在「所有景點」頁籤使用）
             let filtered = attractionsData.filter(item => {
@@ -2110,8 +2154,8 @@ ${list}
                         <div class="absolute top-1.5 left-1.5 max-w-[75%]">
                             <span class="px-1.5 py-0.5 text-[10px] font-medium text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full truncate block">${escapeHtml(primaryCategory)}</span>
                         </div>
-                        <div class="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold text-white bg-black/40 backdrop-blur-md rounded-full">
-                            <span class="text-amber-400">★</span><span>${safeRating}</span>
+                        <div class="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full">
+                            <span class="text-amber-600">★</span><span>${safeRating}</span>
                         </div>
                     </div>
                     <div class="p-2">
@@ -2179,10 +2223,13 @@ ${list}
                             <div class="absolute top-2.5 left-2.5 flex flex-wrap gap-1 z-10 max-w-[75%]">
                                 ${tags.map(t => `<span class="px-2 py-0.5 text-[11px] font-medium text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full shadow-sm">${escapeHtml(t)}</span>`).join('')}
                             </div>
-                            <!-- 右上角：Google 評分 (★ + 分數) -->
+                            <!-- 右上角：Google 評分 (★ + 分數)。
+                                 🔒 使用者反映黑底白字跟整體米色/深藍/紫色的暖色主題不搭，改成米白底＋深色文字，
+                                 跟左上角分類標籤同一組配色語言（bg-[#faf6ee]/90 backdrop-blur-md），
+                                 星星從 amber-400（給深色底用）改成 amber-600（在淺色底上對比度才夠） -->
                             <div class="absolute top-2.5 right-2.5 z-10">
-                                <div class="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-white bg-black/40 backdrop-blur-md rounded-full border border-white/10 shadow-sm">
-                                    <span class="text-amber-400">★</span>
+                                <div class="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full shadow-sm">
+                                    <span class="text-amber-600">★</span>
                                     <span>${safeRating}</span>
                                 </div>
                             </div>
