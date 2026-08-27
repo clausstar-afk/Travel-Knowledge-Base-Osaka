@@ -141,6 +141,43 @@
     <!-- 主要內容區 Main Section -->
     <main class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 w-full flex-1">
 
+        <!-- 🍄 首頁 Hero 區塊：一進站先講「這是什麼、能幫你做什麼」，再進到下面的實際操作區塊。
+             不是入口頁——兩顆按鈕只是捲動到頁面下方對應區塊，內容本來就都在同一頁，不點按鈕手動往下滑
+             一樣看得到全部功能。字體/色票完全沿用既有的 Zen Maru Gothic 標題字跟 Kinopio 紫／主藍色系。 -->
+        <div class="mb-8 py-10 sm:py-14 text-center">
+            <div class="inline-flex items-center gap-1.5 text-xs font-bold text-[#564865] bg-[#f2eef4] border border-[#e3dae8] px-4 py-1.5 rounded-full mb-5">
+                🍄 Kinopio 陪你規劃的大阪自由行
+            </div>
+            <h1 class="hand text-2xl sm:text-4xl font-black text-slate-800 leading-relaxed mb-4" style="text-wrap:balance;">
+                把想去的大阪，<br class="sm:hidden">排成<span class="text-[#2c5f7c]">看得到動線</span>的每一天
+            </h1>
+            <p class="text-sm text-slate-500 leading-loose max-w-md mx-auto mb-7">
+                景點資料庫、航班天氣查詢、AI 客製化建議、拖拉分天排程——從找景點到排好整趟行程，一站完成。
+            </p>
+            <div class="flex items-center justify-center gap-3 flex-wrap mb-8">
+                <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
+                    <div class="hand text-xl font-black text-[#2c5f7c]">38+</div>
+                    <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">精選景點</div>
+                </div>
+                <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
+                    <div class="hand text-xl font-black text-[#2c5f7c]">7</div>
+                    <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">大地區分類</div>
+                </div>
+                <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
+                    <div class="hand text-xl font-black text-[#2c5f7c]">AI</div>
+                    <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">客製化建議</div>
+                </div>
+            </div>
+            <div class="flex items-center justify-center gap-2.5 flex-wrap">
+                <button onclick="smoothScrollToId('browse-section')" class="px-6 py-3 text-sm font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-2xl shadow-md transition">
+                    🍄 開始規劃行程 →
+                </button>
+                <button onclick="smoothScrollToId('flight-section')" class="px-5 py-3 text-sm font-bold text-[#2c5f7c] bg-[#faf6ee] hover:bg-[#eaf1f4] border border-[#d3e3e9] rounded-2xl transition">
+                    ✈️ 我有航班資訊了
+                </button>
+            </div>
+        </div>
+
         <!-- ✈️ 航班查詢區塊 (新增：查詢後自動塞入行程第一天開頭)
              只在「所有景點」頁籤顯示，切到「我的行程」時隱藏（由 switchTab() 控制 hidden）：
              查到航班後時間軸本身就會顯示抵達/起飛卡片，兩邊同時放輸入表單只是佔版面、資訊重複 -->
@@ -196,7 +233,7 @@
              「父容器的高度範圍內」保持固定，父容器一旦比它矮（例如原本只包了頁籤列+分類 chips 兩三百 px 高），
              捲過父容器底部後 sticky 就會直接跟著整個父容器一起被捲走。<main> 包住整頁景點卡片，夠高才撐得住。
              z-30 蓋在卡片內容之上、但仍低於 header 的 z-40，捲動時底下卡片才不會透出來蓋住文字 -->
-        <div class="sticky top-16 z-30 bg-[#f5ecd9]/95 backdrop-blur-sm -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3 mb-4 border-b border-[#d8cba8]/70">
+        <div id="browse-section" class="sticky top-16 z-30 bg-[#f5ecd9]/95 backdrop-blur-sm -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3 mb-4 border-b border-[#d8cba8]/70">
             <!-- 頁籤切換 + 搜尋欄併成同一列：頁籤依內容自動寬度（不再用 flex-1 撐滿整列造成比例不對稱），
                  搜尋欄用 flex-1 吃掉剩餘空間；手機窄螢幕（<640px）自動換行變回上下堆疊，不會擠壓變形 -->
             <div class="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -1654,6 +1691,32 @@ ${list}
             aiSearchResultIds = null;
             document.getElementById('ai-search-status').classList.add('hidden');
             renderCards();
+        }
+
+        // 🍄 自訂捲動動畫（給 Hero 區塊的兩顆按鈕用）：瀏覽器原生 scroll-behavior:smooth 曲線平淡、時間短，
+        // 感覺不太出來。改自己寫一段時間拉長一點、曲線更有戲劇性的動畫——前段醞釀、中段加速衝刺、尾段平穩
+        // 落地，呼應這個網站的飛機／旅行主題。尊重 prefers-reduced-motion，開啟該系統設定的使用者直接跳到
+        // 定位、不強迫看動態效果。
+        function smoothScrollToId(id) {
+            const target = document.getElementById(id);
+            if (!target) return;
+            const startY = window.scrollY;
+            const targetY = target.getBoundingClientRect().top + startY - 72; // 扣掉 sticky header 高度，不要卡在頁首下面
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                window.scrollTo(0, targetY);
+                return;
+            }
+            const distance = targetY - startY;
+            const duration = 900;
+            const startTime = performance.now();
+            // easeInOutQuint：前段慢慢醞釀、中段加速衝刺、尾段平穩落地，比預設的 ease-in-out 更有起伏感
+            const ease = t => t < 0.5 ? 16 * t ** 5 : 1 - Math.pow(-2 * t + 2, 5) / 2;
+            function step(now) {
+                const progress = Math.min((now - startTime) / duration, 1);
+                window.scrollTo(0, startY + distance * ease(progress));
+                if (progress < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
         }
 
         function switchTab(tab) {
