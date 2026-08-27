@@ -3654,11 +3654,20 @@ ${factList}
 
                 timelineHTML += `
                     <div>
-                        <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <!-- 🔒 使用者實測回報：這排資訊「有時候」會斷行到第二行、有時候不會，看起來像跑版——
+                             根本原因是原本 5 個項目（Day 圓形編號／日期標籤／出發時間／天氣／日落）全部塞在
+                             同一個 flex-wrap 容器裡，斷不斷行取決於「日期文字剛好幾個字」這種微小的像素寬度差異
+                             （例如「8/31」比「9/1」多一個字），同一份行程裡不同天數看起來就會斷行不一致，
+                             不是真的壞掉，但視覺上很不穩定。改成拆成兩個各自獨立的 flex-wrap 列：第一列固定放
+                             「Day 編號＋日期標籤」（內容短、幾乎不會斷行），第二列固定放「出發時間＋天氣＋日落」，
+                             兩組各自斷行、彼此不互相搶版面，不管日期文字幾個字，斷行位置都固定一致 -->
+                        <div class="flex flex-wrap items-center gap-2 mb-1.5">
                             <div class="w-7 h-7 rounded-full bg-[#2c5f7c] text-white flex items-center justify-center text-xs font-bold shadow-md shadow-[#d3e3e9] shrink-0">${d}</div>
                             <div class="hand bg-[#eaf1f4] text-[#1a3a4a] px-4 py-1.5 rounded-xl text-xs font-bold shadow-sm">
                                 ${dayLabel}
                             </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 mb-2">
                             <label class="flex items-center gap-1 text-[11px] text-slate-500 font-bold">
                                 🚩 出發
                                 <input type="time" value="${escapeHtml(currentStart)}" ${earliestStart ? `min="${escapeHtml(earliestStart)}"` : ''} onchange="setDayStartTime(${d}, this.value)" class="border ${startTooEarly ? 'border-amber-400' : 'border-[#d8cba8]'} rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
