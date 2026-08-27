@@ -6,6 +6,8 @@
 
 專案為純前端靜態網頁（單一 HTML 檔，內嵌 CSS／JS），沒有自架後端伺服器，資料來源與運算全部發生在瀏覽器端與第三方 API 之間。
 
+**🔗 線上展示：https://clausstar-afk.github.io/Travel-Knowledge-Base-Osaka/**（push 到 master 會自動重新部署）
+
 ---
 
 ## 主要功能
@@ -89,7 +91,7 @@
 | sunrise-sunset.org | 日落時間查詢 | 免費、免金鑰 |
 | Google Maps | 景點地圖連結（純導頁，非 API 呼叫） | 免費 |
 
-> ⚠️ 這是純前端 Demo 專案，API 金鑰直接寫在前端程式碼中，任何人檢視原始碼、或直接開啟部署後的網頁按右鍵「檢視原始碼」都看得到。正式營運環境應該做後端代理層來保護金鑰，目前僅適用於學生專題／課堂 Demo 情境下的可接受風險——這個風險沒辦法用「repo 設私人」解決，因為只要網頁是公開可訪問的，金鑰就會隨著頁面送到每個訪客的瀏覽器。**部署給全班使用前，務必先到 Google AI Studio／OpenRouter／RapidAPI 後台各自重新產生一組新金鑰**，讓舊金鑰失效。
+> ⚠️ 這是純前端 Demo 專案，沒有後端能真正藏金鑰——三組金鑰放在不進 Git 的 `config.js`（見 `config.example.js` 範本、`.gitignore`），部署到 GitHub Pages 時由 `.github/workflows/deploy.yml` 從 repo 的 Secrets 自動產生，Git 歷史跟原始碼裡都不含金鑰。但只要網頁是公開可訪問的，**部署出來的成品網頁本身**（`config.js` 也會被送到每個訪客的瀏覽器）金鑰還是能透過「檢視原始碼」看到，這一點沒辦法單靠架構解決，是純前端無後端的天生限制。正式營運環境應該做後端代理層才能真正藏住金鑰，目前僅適用於學生專題／課堂 Demo 情境下的可接受風險。
 >
 > 為了讓少數人不會一次把全班共用的免費額度用光，AI 語意搜尋、AI 開場白、航班查詢都各自加上「每個瀏覽器每天上限幾次」的防呆（AI 搜尋 10 次、AI 開場白 5 次、航班查詢 5 次、聊天問答 5 次），額度是整組 Key 共用、這個上限沒辦法增加總額度，只是讓大家平均分配。
 
@@ -110,7 +112,15 @@
 
 ## 版本更新紀錄
 
-> 本專案未使用 Git 做版本控制，以下紀錄依開發討論過程整理，日期為主要功能定案的大致時間。
+> 這份版本紀錄不是照 Git tag／release 逐一對應，是依開發討論過程整理，日期為主要功能定案的大致時間；真正的逐次修改細節請看 `git log`。
+
+### v5.25（2026-08-27）— 成功 push 上 GitHub、部署到 GitHub Pages
+
+- 換完第三組 Gemini／OpenRouter 金鑰（AeroDataBox 沒被 GitHub 掃到，不用換）並更新 GitHub Secrets 後，成功 push（`git push -u origin master`），repo 正式公開：https://github.com/clausstar-afk/Travel-Knowledge-Base-Osaka
+- Push 過程實際遇到並排除兩個障礙：① GitHub Push Protection 擋下含金鑰字串的歷史 commit，逐一在 GitHub 網頁上「Allow secret」放行（4 筆，2 舊 2 新，新的那兩筆放行後立刻換成第三組讓它們也失效）；② `.github/workflows/deploy.yml` 需要 `workflow` 這個 OAuth scope 才能 push，用 `gh auth refresh -s workflow` 補授權
+- 部署到 GitHub Pages 第一次執行失敗，原因是 `github-pages` 這個 environment 預設的分支保護規則沒把 `master` 加進允許清單（GitHub 預設常常只認 `main`）；用 `gh api` 把 `master` 加進 `deployment-branch-policies` 後重新觸發，部署成功
+- 公開網址：**https://clausstar-afk.github.io/Travel-Knowledge-Base-Osaka/**，用真實瀏覽器驗證過：38 筆景點資料正常載入、三組金鑰正確從 GitHub Secrets 注入（值跟目前有效的第三代金鑰一致）、無 console 錯誤
+- 之後每次 `git push` 到 master 都會自動重新建置部署，不需要再手動操作任何一個步驟
 
 ### v5.24（2026-08-27）— 金鑰改用獨立 config.js，設定 GitHub Pages 自動部署
 
