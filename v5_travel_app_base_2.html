@@ -95,6 +95,16 @@
             scrollbar-width: none;
         }
 
+        /* 🔒 使用者實測回報：進站/重新整理時畫面會自己慢慢往下捲，捲到最下面——這是瀏覽器內建的
+           「scroll anchoring」在作祟：畫面上方的內容陸續非同步載入完成時（骨架屏換成真的卡片、
+           天氣徽章冒出來、健檢內容從 LocalStorage 還原……），瀏覽器會自動微調捲動位置想維持
+           「使用者原本在看的東西還在同一個畫面位置」，立意良好，但這個頁面上方會陸續變動的區塊
+           一多，多次微調疊加起來就變成看得到的持續往下漂移。直接關掉這個瀏覽器自動行為，
+           讓畫面單純釘在使用者捲到的位置，不要自作主張幫忙調整 */
+        html {
+            overflow-anchor: none;
+        }
+
         /* ✨ 進場往上浮動動畫：CSS 動畫只在元素「從 display:none 變成可見」的當下才會重新播放，
            不會在同一個區塊已經顯示的狀態下、內容用 innerHTML 更新時被誤觸發（例如打字搜尋、切分類）。
            利用這個特性，直接把動畫掛在各區塊本身的 class 上，不用額外寫 JS 監聽或重播邏輯：
@@ -201,7 +211,7 @@
                 <button onclick="smoothScrollToId('browse-section')" class="px-6 py-3 text-sm font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-2xl shadow-md transition">
                     🍄 開始規劃行程 ↓
                 </button>
-                <button onclick="switchTab('itinerary'); smoothScrollToId('flight-section')" class="px-5 py-3 text-sm font-bold text-[#2c5f7c] bg-[#faf6ee] hover:bg-[#eaf1f4] border border-[#d3e3e9] rounded-2xl transition">
+                <button onclick="switchTab('itinerary'); smoothScrollToId('flight-type-choice')" class="px-5 py-3 text-sm font-bold text-[#2c5f7c] bg-[#faf6ee] hover:bg-[#eaf1f4] border border-[#d3e3e9] rounded-2xl transition">
                     ✈️ 我有航班資訊了 →
                 </button>
             </div>
@@ -319,10 +329,13 @@
              跟原本邏輯相反）。 -->
         <div id="flight-section" class="reveal mt-8 mb-6 p-5 bg-[#eef3f5] border border-[#dde7ea] rounded-2xl hidden">
             <h3 class="hand text-sm font-bold text-[#37505f] flex items-center gap-2 mb-3">
-                <span>✈️</span> 輸入航班資訊，自動加到行程開頭或結尾
+                <span>✈️</span> 輸入航班資訊
             </h3>
-            <!-- 去程/回程選擇：決定插入時間軸的最前面還是最後面 -->
-            <div class="flex items-center gap-4 mb-3 text-xs font-bold text-[#37505f]">
+            <!-- 去程/回程選擇：決定插入時間軸的最前面還是最後面。
+                 給這排加上 id，是因為 Hero「我有航班資訊了」按鈕改成直接捲到這裡（而不是整個 flight-section
+                 最上面的標題），使用者點下去第一眼就看到這個有互動性、決定查詢方向的選項，不用先看過一行
+                 現在已經拿掉的說明文字才捲得到 -->
+            <div id="flight-type-choice" class="flex items-center gap-4 mb-3 text-xs font-bold text-[#37505f]">
                 <label class="flex items-center gap-1.5 cursor-pointer">
                     <input type="radio" name="flight-type" value="arrival" checked onchange="updateFlightDateConstraints()">
                     🛬 去程（抵達大阪）
@@ -1775,19 +1788,36 @@ ${list}
         function smoothScrollToId(id) {
             const target = document.getElementById(id);
             if (!target) return;
-            const startY = window.scrollY;
-            const targetY = target.getBoundingClientRect().top + startY - 72; // 扣掉 sticky header 高度，不要卡在頁首下面
+            const header = document.querySelector('header');
+            const browseSection = document.getElementById('browse-section');
+            // 🔒 使用者實測回報：捲到航班區塊時位置「太下面」，卡到輸入框那一段，去程/回程選項被蓋住看不到——
+            // 原本這裡只扣掉最上面的 <header> 高度（固定 72px），但「所有景點／我的行程」頁籤＋搜尋列
+            // （#browse-section）也是 sticky，捲動到它下面的任何目標時，這兩層 sticky 元素都還會疊在畫面最上方，
+            // 只扣 header 高度不夠，目標的上緣就會被 browse-section 蓋住。改成動態量測目前實際疊在最上面的
+            // sticky 高度：捲到 browse-section 本身不用另外扣（它自己就是目標），捲到它之後的任何目標
+            // （例如航班查詢的去程/回程選項）才需要疊加扣掉。
+            const computeTargetY = () => {
+                const stickyOffset = (header ? header.getBoundingClientRect().height : 64)
+                    + (browseSection && target !== browseSection ? browseSection.getBoundingClientRect().height : 0)
+                    + 8; // 多留一點呼吸空間，目標不要緊貼著 sticky 元素下緣
+                return target.getBoundingClientRect().top + window.scrollY - stickyOffset;
+            };
             if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                window.scrollTo(0, targetY);
+                window.scrollTo(0, computeTargetY());
                 return;
             }
-            const distance = targetY - startY;
+            const startY = window.scrollY;
             const duration = 900;
             const startTime = performance.now();
             // easeInOutQuint：前段慢慢醞釀、中段加速衝刺、尾段平穩落地，比預設的 ease-in-out 更有起伏感
             const ease = t => t < 0.5 ? 16 * t ** 5 : 1 - Math.pow(-2 * t + 2, 5) / 2;
+            // 🔒 目標元素若剛從隱藏切換成可見（例如切頁籤時），本身可能還在播放「進場往上浮動」的 CSS 動畫
+            // （transform 位移，見 .reveal／.reveal-hero），量到的位置在動畫播完之前一直在變動；原本只在
+            // 捲動開始前算一次終點，捲完時目標經常還沒播完自己的進場動畫、真正落點跟算好的終點對不上。
+            // 改成每一影格都重新量測終點，捲動全程持續校正，不管目標是不是還在自己的動畫裡都能精準落地。
             function step(now) {
                 const progress = Math.min((now - startTime) / duration, 1);
+                const distance = computeTargetY() - startY;
                 window.scrollTo(0, startY + distance * ease(progress));
                 if (progress < 1) requestAnimationFrame(step);
             }
