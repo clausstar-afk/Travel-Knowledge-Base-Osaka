@@ -1312,12 +1312,30 @@
             return match ? `${match[1]}:${match[2]}` : null;
         }
 
+        // 🛫 回程航班起飛時間：最後一天最後一個景點的結束時間不該晚於這個時間（不然來不及到機場）
+        function getDepartureFlightTime() {
+            if (!currentDepartureFlight?.time) return null;
+            const match = currentDepartureFlight.time.match(/(\d{2}):(\d{2})$/);
+            return match ? `${match[1]}:${match[2]}` : null;
+        }
+
         function clockToMinutes(clockStr) {
             const [h, m] = clockStr.split(':').map(Number);
             return h * 60 + m;
         }
 
+        // 🛡️ 真正的防呆：<input type="time" min="..."> 的 min 屬性只在「表單送出驗證」時才生效，
+        // 使用者直接用原生時間選擇器（尤其手機）挑一個更早的時間、或手動打字，瀏覽器並不會擋下來，
+        // onchange 一樣會正常觸發、存進去無效的值——親自測過會發生。單靠 min 屬性 + 事後警示文字，
+        // 使用者還是能存到「人都還沒下飛機」的出發時間。這裡在儲存前直接攔截修正，不給無效值存在的機會。
         function setDayStartTime(d, value) {
+            if (d === 1) {
+                const earliest = getDay1EarliestStartTime();
+                if (earliest && clockToMinutes(value) < clockToMinutes(earliest)) {
+                    value = earliest;
+                    showToast('出發時間不能早於航班抵達時間，已自動改回抵達時間', true, '🛡️');
+                }
+            }
             dayStartTimes[d] = value;
             saveDayPlan();
             generateDynamicTimeline();
@@ -2166,12 +2184,14 @@ ${list}
         }
 
         // Toast 動態通知
+        // icon 參數可選：不傳就沿用原本「加入/移除行程」的 🎉／🗑️ 二選一；有明確傳入時（例如防呆自動修正）優先用它，
+        // 避免這類跟「加入/移除行程」無關的通知，被誤套上容易讓人誤會成「東西被刪除」的垃圾桶圖示
         let toastTimeout;
-        function showToast(msg, isAdd = true) {
+        function showToast(msg, isAdd = true, icon = null) {
             const toast = document.getElementById('toast');
             const toastIcon = document.getElementById('toast-icon');
             const toastMsg = document.getElementById('toast-message');
-            toastIcon.textContent = isAdd ? '🎉' : '🗑️';
+            toastIcon.textContent = icon || (isAdd ? '🎉' : '🗑️');
             toastMsg.textContent = msg;
             toast.classList.remove('translate-y-20', 'opacity-0');
             toast.classList.add('translate-y-0', 'opacity-100');
@@ -3245,7 +3265,7 @@ ${factList}
         }
 
         // 渲染某一天裡的景點卡片（可拖曳排序，並附上觸控裝置可用的按鈕操作）
-        function renderDayItemCard(item, dayIndex, idx, total, scheduleEntry, dayDate, dayIsRainy) {
+        function renderDayItemCard(item, dayIndex, idx, total, scheduleEntry, dayDate, dayIsRainy, departureFlightTime) {
             // 📌 分類圖示：找不到對應分類時的預設圖示，之後 Google Sheet 新增分類，記得回來補規則，
             // 不要讓新分類一直落到這個沒有針對性語意的預設值
             let categoryIcon = '📌';
@@ -3277,6 +3297,10 @@ ${factList}
             if (scheduleEntry?.outOfHours) warningItems.push(`可能超出營業時間（${safeHours}），建議調整順序或出發時間`);
             if (isClosedToday) warningItems.push(`這天可能是公休日（${safeHours}），建議改天或上官網確認`);
             if (isOutdoorRainy) warningItems.push('戶外景點，這天有雨');
+            // 🛫 只在「最後一天的最後一個景點」才會帶進 departureFlightTime（見呼叫端），這裡直接比對結束時間
+            if (departureFlightTime && scheduleEntry && clockToMinutes(formatMinutesToClock(scheduleEntry.endMin)) > clockToMinutes(departureFlightTime)) {
+                warningItems.push(`結束時間比回程航班起飛時間（${departureFlightTime}）還晚，恐怕來不及到機場，建議調整這天行程或提早結束`);
+            }
             const warningBlock = warningItems.length > 0
                 ? `<div class="p-2.5 bg-amber-50 rounded-lg text-xs text-amber-800">
                         <div class="font-bold">⚠️ 注意事項</div>
@@ -3625,7 +3649,10 @@ ${factList}
                             ${dayItems.length === 0
                                 ? `<div class="text-xs text-slate-300 italic py-3 pl-3">（空）把景點拖曳到這裡</div>`
                                 : dayItems.map((item, idx) => {
-                                    const cardHTML = renderDayItemCard(item, d, idx, dayItems.length, schedule[idx], dayDate, dayIsRainy);
+                                    // 🛡️ 最後一天最後一個景點才需要檢查：結束時間不能晚於回程航班起飛時間，不然來不及到機場
+                                    const isLastItemOfLastDay = d === dayCount && idx === dayItems.length - 1;
+                                    const departureFlightTime = isLastItemOfLastDay ? getDepartureFlightTime() : null;
+                                    const cardHTML = renderDayItemCard(item, d, idx, dayItems.length, schedule[idx], dayDate, dayIsRainy, departureFlightTime);
                                     const transitMin = schedule[idx].transitToNextMin;
                                     // 🚃 卡片之間顯示區域距離啟發式估算出的交通時間，直接回應「不知道該預留多少交通時間」的痛點
                                     // 旁邊再加一個「查看交通方式」連結，解決更花時間的下一步：這兩站之間到底該搭哪條線、怎麼轉乘
