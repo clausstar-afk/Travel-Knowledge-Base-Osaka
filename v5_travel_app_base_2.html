@@ -3119,8 +3119,14 @@ ${factList}
         // 🩺 主動提醒：景點第一次全部排定（未分配區清空）時跳一次 Toast，提示可以健檢——
         // 不是自動觸發 AI，使用者還是要自己按按鈕；用 hasNudgedHealthCheck 避免同一次排滿狀態重複跳出，
         // 使用者又把景點移出未分配區的話會重置，之後重新排滿還能再提醒一次
+        // 🔒 使用者實測回報：只是拖曳調整一個景點（例如只有 1、2 個景點的小行程），就跳出「要不要健檢」，
+        // 感覺太急著催促。根本原因是這裡的門檻跟 runHealthCheck() 自己的門檻對不上：runHealthCheck()
+        // 要「至少一天排入 2 個以上景點」才有東西可以健檢，這裡卻只要「有排進行程、未分配區清空」就提醒，
+        // 使用者只有 1 個景點時，才剛拖進某一天就會觸發，點開健檢卻只會看到「東西不夠」的提示，
+        // 等於白白催促了一次。改成套用跟 runHealthCheck() 完全相同的門檻，兩邊條件永遠一致。
         function maybeNudgeHealthCheck() {
-            if (unassignedIds.length === 0 && myItineraryIds.size > 0 && !hasNudgedHealthCheck) {
+            const daysWithEnoughItems = dayPlan.filter(day => day.length >= 2).length;
+            if (unassignedIds.length === 0 && daysWithEnoughItems > 0 && !hasNudgedHealthCheck) {
                 hasNudgedHealthCheck = true;
                 showToast('行程都排好囉，要不要讓 Kinopio 幫你健檢一下？', true);
             } else if (unassignedIds.length > 0) {
