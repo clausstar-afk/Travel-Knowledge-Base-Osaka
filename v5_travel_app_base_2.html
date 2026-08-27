@@ -159,7 +159,7 @@
                     🛫 回程（離開大阪，加到行程結尾）
                 </label>
             </div>
-            <div class="flex flex-col sm:flex-row gap-2">
+            <div class="flex flex-col sm:flex-row gap-2 sm:items-end">
                 <!-- relative 容器讓下面的自訂建議清單可以絕對定位貼齊這個輸入框，取代原生 <datalist>
                      （原生的樣式沒辦法客製、又跟全站風格不搭，且部分瀏覽器清空輸入框後選項不會跟著消失） -->
                 <div class="relative flex-1">
@@ -168,8 +168,16 @@
                         class="w-full px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
                     <div id="flight-number-suggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#faf6ee] border border-[#c3d3d9] rounded-xl shadow-lg overflow-hidden"></div>
                 </div>
-                <input type="date" id="flight-date-input" onchange="onFlightDateChange()"
-                    class="w-full sm:w-auto px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                <!-- 🔒 原生 <input type="date"> 沒填值時的顯示方式完全由瀏覽器/裝置決定：桌面 Chrome 會自動顯示
+                     「年/月/日」這種提示文字，但不少手機版瀏覽器（實測過 Android Chrome）設計上就是留空、
+                     不會有任何提示文字，這是瀏覽器原生行為的落差，沒辦法用 CSS 控制。改成自己加一個固定會
+                     顯示的文字標籤，不依賴瀏覽器願不願意顯示提示文字。這個欄位多了 label 會比其他兩個欄位
+                     高，父層加 `sm:items-end` 讓整排元素底部對齊，桌面版三個欄位還是會維持原本水平切齊。 -->
+                <div class="w-full sm:w-auto">
+                    <label for="flight-date-input" class="block text-[11px] font-bold text-slate-500 mb-1">📅 出發日期</label>
+                    <input type="date" id="flight-date-input" onchange="onFlightDateChange()"
+                        class="w-full sm:w-auto px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                </div>
                 <button onclick="lookupFlight()" id="flight-lookup-btn"
                     class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#37505f] rounded-xl transition shrink-0">
                     查詢航班
