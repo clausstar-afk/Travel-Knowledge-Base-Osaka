@@ -94,6 +94,34 @@
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
+
+        /* ✨ 進場往上浮動動畫：CSS 動畫只在元素「從 display:none 變成可見」的當下才會重新播放，
+           不會在同一個區塊已經顯示的狀態下、內容用 innerHTML 更新時被誤觸發（例如打字搜尋、切分類）。
+           利用這個特性，直接把動畫掛在各區塊本身的 class 上，不用額外寫 JS 監聽或重播邏輯：
+           - hero-section 從頁面一載入就是可見的，只會在第一次進站播放一次
+           - flight-section／browse-section 同理，只在第一次進站播放一次
+           - attraction-grid／area-rows／timeline-container 平常靠 .hidden 類別切換顯示，
+             每次從隱藏切回顯示（切換頁籤、切回瀏覽模式）都會重新觸發一次，符合「我的行程頁籤
+             也要有一般浮動效果」的需求，同時不會在同一頁籤內打字篩選時反覆播放 */
+        @keyframes floatUpBig {
+            from { opacity: 0; transform: translateY(40px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes floatUp {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .reveal-hero { animation: floatUpBig 0.9s cubic-bezier(.22,1,.36,1) both; }
+        .reveal { animation: floatUp 0.6s cubic-bezier(.22,1,.36,1) both; }
+        .reveal-d1 { animation-delay: 0.1s; }
+        .reveal-d2 { animation-delay: 0.2s; }
+        @media (prefers-reduced-motion: reduce) {
+            .reveal-hero, .reveal {
+                animation: none !important;
+                opacity: 1 !important;
+                transform: none !important;
+            }
+        }
     </style>
     
 </head>
@@ -144,7 +172,7 @@
         <!-- 🍄 首頁 Hero 區塊：一進站先講「這是什麼、能幫你做什麼」，再進到下面的實際操作區塊。
              不是入口頁——兩顆按鈕只是捲動到頁面下方對應區塊，內容本來就都在同一頁，不點按鈕手動往下滑
              一樣看得到全部功能。字體/色票完全沿用既有的 Zen Maru Gothic 標題字跟 Kinopio 紫／主藍色系。 -->
-        <div id="hero-section" class="mb-8 py-10 sm:py-14 text-center">
+        <div id="hero-section" class="reveal-hero mb-8 py-10 sm:py-14 text-center">
             <!-- 兩行刻意不置中：第一行用 padding-left、第二行用相同比例的 padding-right，
                  靠左/靠右的內縮距離完全對稱，形成一個輕微的錯位排版節奏，不是隨便偏一邊。 -->
             <!-- 「心動」「行動」這兩個重點色的字放大 2 級（text-3xl→5xl、sm:text-5xl→7xl），比整行放大更精準凸顯，
@@ -183,7 +211,7 @@
         <!-- ✈️ 航班查詢區塊 (新增：查詢後自動塞入行程第一天開頭)
              只在「所有景點」頁籤顯示，切到「我的行程」時隱藏（由 switchTab() 控制 hidden）：
              查到航班後時間軸本身就會顯示抵達/起飛卡片，兩邊同時放輸入表單只是佔版面、資訊重複 -->
-        <div id="flight-section" class="mb-6 p-5 bg-[#eef3f5] border border-[#dde7ea] rounded-2xl">
+        <div id="flight-section" class="reveal reveal-d1 mb-6 p-5 bg-[#eef3f5] border border-[#dde7ea] rounded-2xl">
             <h3 class="hand text-sm font-bold text-[#37505f] flex items-center gap-2 mb-3">
                 <span>✈️</span> 輸入航班資訊，自動加到行程開頭或結尾
             </h3>
@@ -235,7 +263,7 @@
              「父容器的高度範圍內」保持固定，父容器一旦比它矮（例如原本只包了頁籤列+分類 chips 兩三百 px 高），
              捲過父容器底部後 sticky 就會直接跟著整個父容器一起被捲走。<main> 包住整頁景點卡片，夠高才撐得住。
              z-30 蓋在卡片內容之上、但仍低於 header 的 z-40，捲動時底下卡片才不會透出來蓋住文字 -->
-        <div id="browse-section" class="sticky top-16 z-30 bg-[#f5ecd9]/95 backdrop-blur-sm -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3 mb-4 border-b border-[#d8cba8]/70">
+        <div id="browse-section" class="reveal reveal-d2 sticky top-16 z-30 bg-[#f5ecd9]/95 backdrop-blur-sm -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3 mb-4 border-b border-[#d8cba8]/70">
             <!-- 頁籤切換 + 搜尋欄併成同一列：頁籤依內容自動寬度（不再用 flex-1 撐滿整列造成比例不對稱），
                  搜尋欄用 flex-1 吃掉剩餘空間；手機窄螢幕（<640px）自動換行變回上下堆疊，不會擠壓變形 -->
             <div class="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -309,13 +337,13 @@
 
         <!-- 景點卡片展示網格 Card Grid：桌面版加大到最多 4 欄（原本 lg 只有 3 欄，配合卡片瘦身後單欄不用那麼寬），
              搭配容器加寬到 max-w-[1600px]，寬螢幕下一次能看到更多景點、少滑很多頁 -->
-        <div id="attraction-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 hidden">
+        <div id="attraction-grid" class="reveal grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 hidden">
             <!-- 景點卡片由 JS 動態渲染 -->
         </div>
 
         <!-- 📍 瀏覽模式（沒有搜尋/AI搜尋時）改用「地區橫向排」呈現，仿照 Netflix 首頁每排可左右滑動的瀏覽方式——
              手機上不用整頁上下滑過 38 張卡片，用手指橫滑就能快速掃過同一區的景點。搜尋/AI搜尋時維持原本的格狀清單。 -->
-        <div id="area-rows" class="hidden">
+        <div id="area-rows" class="reveal hidden">
             <!-- 各地區列由 JS 動態渲染 -->
         </div>
 
@@ -345,7 +373,7 @@
         </div>
 
         <!-- AI 智能時間軸區塊 (新增) -->
-        <div id="timeline-container" class="mt-8 pt-10 border-t border-[#d8cba8] hidden">
+        <div id="timeline-container" class="reveal mt-8 pt-10 border-t border-[#d8cba8] hidden">
             <!-- 這裡會由 JS 自動動態渲染出精美的垂直時間軸 -->
         </div>
     </main>
