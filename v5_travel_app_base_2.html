@@ -98,9 +98,8 @@
         /* ✨ 進場往上浮動動畫：CSS 動畫只在元素「從 display:none 變成可見」的當下才會重新播放，
            不會在同一個區塊已經顯示的狀態下、內容用 innerHTML 更新時被誤觸發（例如打字搜尋、切分類）。
            利用這個特性，直接把動畫掛在各區塊本身的 class 上，不用額外寫 JS 監聽或重播邏輯：
-           - hero-section 從頁面一載入就是可見的，只會在第一次進站播放一次
-           - flight-section／browse-section 同理，只在第一次進站播放一次
-           - attraction-grid／area-rows／timeline-container 平常靠 .hidden 類別切換顯示，
+           - hero-section／browse-section 從頁面一載入就是可見的，只會在第一次進站播放一次
+           - flight-section／attraction-grid／area-rows／timeline-container 平常靠 .hidden 類別切換顯示，
              每次從隱藏切回顯示（切換頁籤、切回瀏覽模式）都會重新觸發一次，符合「我的行程頁籤
              也要有一般浮動效果」的需求，同時不會在同一頁籤內打字篩選時反覆播放 */
         @keyframes floatUpBig {
@@ -200,61 +199,12 @@
             </div>
             <div class="flex items-center justify-center gap-2.5 flex-wrap">
                 <button onclick="smoothScrollToId('browse-section')" class="px-6 py-3 text-sm font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-2xl shadow-md transition">
-                    🍄 開始規劃行程 →
+                    🍄 開始規劃行程 ↓
                 </button>
-                <button onclick="smoothScrollToId('flight-section')" class="px-5 py-3 text-sm font-bold text-[#2c5f7c] bg-[#faf6ee] hover:bg-[#eaf1f4] border border-[#d3e3e9] rounded-2xl transition">
-                    ✈️ 我有航班資訊了
-                </button>
-            </div>
-        </div>
-
-        <!-- ✈️ 航班查詢區塊 (新增：查詢後自動塞入行程第一天開頭)
-             只在「所有景點」頁籤顯示，切到「我的行程」時隱藏（由 switchTab() 控制 hidden）：
-             查到航班後時間軸本身就會顯示抵達/起飛卡片，兩邊同時放輸入表單只是佔版面、資訊重複 -->
-        <div id="flight-section" class="reveal reveal-d1 mb-6 p-5 bg-[#eef3f5] border border-[#dde7ea] rounded-2xl">
-            <h3 class="hand text-sm font-bold text-[#37505f] flex items-center gap-2 mb-3">
-                <span>✈️</span> 輸入航班資訊，自動加到行程開頭或結尾
-            </h3>
-            <!-- 去程/回程選擇：決定插入時間軸的最前面還是最後面 -->
-            <div class="flex items-center gap-4 mb-3 text-xs font-bold text-[#37505f]">
-                <label class="flex items-center gap-1.5 cursor-pointer">
-                    <input type="radio" name="flight-type" value="arrival" checked onchange="updateFlightDateConstraints()">
-                    🛬 去程（抵達大阪，加到行程開頭）
-                </label>
-                <label class="flex items-center gap-1.5 cursor-pointer">
-                    <input type="radio" name="flight-type" value="departure" onchange="updateFlightDateConstraints()">
-                    🛫 回程（離開大阪，加到行程結尾）
-                </label>
-            </div>
-            <div class="flex flex-col sm:flex-row gap-2 sm:items-end">
-                <!-- relative 容器讓下面的自訂建議清單可以絕對定位貼齊這個輸入框，取代原生 <datalist>
-                     （原生的樣式沒辦法客製、又跟全站風格不搭，且部分瀏覽器清空輸入框後選項不會跟著消失） -->
-                <div class="relative flex-1">
-                    <input type="text" id="flight-number-input" placeholder="去程航班號碼，例如 CI173"
-                        autocomplete="off" oninput="onFlightNumberInput()" onblur="hideFlightNumberSuggestions()"
-                        class="w-full px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
-                    <div id="flight-number-suggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#faf6ee] border border-[#c3d3d9] rounded-xl shadow-lg overflow-hidden"></div>
-                </div>
-                <!-- 🔒 原生 <input type="date"> 沒填值時的顯示方式完全由瀏覽器/裝置決定：桌面 Chrome 會自動顯示
-                     「年/月/日」這種提示文字，但不少手機版瀏覽器（實測過 Android Chrome）設計上就是留空、
-                     不會有任何提示文字，這是瀏覽器原生行為的落差，沒辦法用 CSS 控制。改成自己加一個固定會
-                     顯示的文字標籤，不依賴瀏覽器願不願意顯示提示文字。這個欄位多了 label 會比其他兩個欄位
-                     高，父層加 `sm:items-end` 讓整排元素底部對齊，桌面版三個欄位還是會維持原本水平切齊。 -->
-                <div class="w-full sm:w-auto">
-                    <label for="flight-date-input" class="block text-[11px] font-bold text-slate-500 mb-1">📅 出發日期</label>
-                    <input type="date" id="flight-date-input" onchange="onFlightDateChange()"
-                        class="w-full sm:w-auto px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
-                </div>
-                <button onclick="lookupFlight()" id="flight-lookup-btn"
-                    class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#37505f] rounded-xl transition shrink-0">
-                    查詢航班
+                <button onclick="switchTab('itinerary'); smoothScrollToId('flight-section')" class="px-5 py-3 text-sm font-bold text-[#2c5f7c] bg-[#faf6ee] hover:bg-[#eaf1f4] border border-[#d3e3e9] rounded-2xl transition">
+                    ✈️ 我有航班資訊了 →
                 </button>
             </div>
-            <p id="flight-date-warning" class="text-[11px] text-amber-600 mt-1 hidden"></p>
-            <p id="flight-lookup-status" class="text-[11px] text-[#5c7a8a] mt-2"></p>
-            <!-- 提醒使用者：查到去程航班日期後，天氣預報跟 Kinopio 打包提醒才會有資料可以顯示，
-                 不然這兩個功能會一直悄悄地不出現、使用者也不知道要怎麼觸發 -->
-            <p class="text-[11px] text-[#8ba7b3] mt-1">💡 查詢去程航班、確定抵達日期後，「我的行程」頁籤會自動顯示大阪天氣預報，Kinopio 也會幫你寫打包提醒</p>
         </div>
 
         <!-- 🧷 黏性定位：往下滑瀏覽景點時，「所有景點／我的行程」頁籤跟搜尋欄固定在頂部（緊貼在 header 下方，
@@ -352,6 +302,58 @@
             <div class="text-5xl">🧭</div>
             <h3 class="text-base font-bold text-slate-700">沒有找到符合條件的景點</h3>
             <p class="text-xs text-slate-400">請嘗試更換搜尋關鍵字或分類標籤</p>
+        </div>
+
+        <!-- ✈️ 航班查詢區塊 (查詢後自動塞入行程第一天開頭/結尾)
+             🔒 使用者提出：大部分人是拿航班資訊來排行程，查詢表單卻放在「所有景點」頁籤，查到的
+             抵達/起飛卡片又只會顯示在「我的行程」的時間軸裡——查詢跟結果分居兩個頁籤，反而要來回切換。
+             搬到這裡（「我的行程」頁籤最上方，時間軸正上方），查詢完同一頁往下滑就能立刻看到結果卡片，
+             不用切頁籤。只在「我的行程」頁籤顯示，切到「所有景點」時隱藏（由 switchTab() 控制 hidden，
+             跟原本邏輯相反）。 -->
+        <div id="flight-section" class="reveal mt-8 mb-6 p-5 bg-[#eef3f5] border border-[#dde7ea] rounded-2xl hidden">
+            <h3 class="hand text-sm font-bold text-[#37505f] flex items-center gap-2 mb-3">
+                <span>✈️</span> 輸入航班資訊，自動加到行程開頭或結尾
+            </h3>
+            <!-- 去程/回程選擇：決定插入時間軸的最前面還是最後面 -->
+            <div class="flex items-center gap-4 mb-3 text-xs font-bold text-[#37505f]">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="flight-type" value="arrival" checked onchange="updateFlightDateConstraints()">
+                    🛬 去程（抵達大阪，加到行程開頭）
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="flight-type" value="departure" onchange="updateFlightDateConstraints()">
+                    🛫 回程（離開大阪，加到行程結尾）
+                </label>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 sm:items-end">
+                <!-- relative 容器讓下面的自訂建議清單可以絕對定位貼齊這個輸入框，取代原生 <datalist>
+                     （原生的樣式沒辦法客製、又跟全站風格不搭，且部分瀏覽器清空輸入框後選項不會跟著消失） -->
+                <div class="relative flex-1">
+                    <input type="text" id="flight-number-input" placeholder="去程航班號碼，例如 CI173"
+                        autocomplete="off" oninput="onFlightNumberInput()" onblur="hideFlightNumberSuggestions()"
+                        class="w-full px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                    <div id="flight-number-suggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#faf6ee] border border-[#c3d3d9] rounded-xl shadow-lg overflow-hidden"></div>
+                </div>
+                <!-- 🔒 原生 <input type="date"> 沒填值時的顯示方式完全由瀏覽器/裝置決定：桌面 Chrome 會自動顯示
+                     「年/月/日」這種提示文字，但不少手機版瀏覽器（實測過 Android Chrome）設計上就是留空、
+                     不會有任何提示文字，這是瀏覽器原生行為的落差，沒辦法用 CSS 控制。改成自己加一個固定會
+                     顯示的文字標籤，不依賴瀏覽器願不願意顯示提示文字。這個欄位多了 label 會比其他兩個欄位
+                     高，父層加 `sm:items-end` 讓整排元素底部對齊，桌面版三個欄位還是會維持原本水平切齊。 -->
+                <div class="w-full sm:w-auto">
+                    <label for="flight-date-input" class="block text-[11px] font-bold text-slate-500 mb-1">📅 出發日期</label>
+                    <input type="date" id="flight-date-input" onchange="onFlightDateChange()"
+                        class="w-full sm:w-auto px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                </div>
+                <button onclick="lookupFlight()" id="flight-lookup-btn"
+                    class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#37505f] rounded-xl transition shrink-0">
+                    查詢航班
+                </button>
+            </div>
+            <p id="flight-date-warning" class="text-[11px] text-amber-600 mt-1 hidden"></p>
+            <p id="flight-lookup-status" class="text-[11px] text-[#5c7a8a] mt-2"></p>
+            <!-- 提醒使用者：查到去程航班日期後，天氣預報跟 Kinopio 打包提醒才會有資料可以顯示，
+                 不然這兩個功能會一直悄悄地不出現、使用者也不知道要怎麼觸發 -->
+            <p class="text-[11px] text-[#8ba7b3] mt-1">💡 查詢去程航班、確定抵達日期後，這裡下方會自動顯示大阪天氣預報，Kinopio 也會幫你寫打包提醒</p>
         </div>
 
         <!-- AI 智能時間軸區塊 (新增) -->
@@ -1800,9 +1802,10 @@ ${list}
             // 搜尋列現在自己獨立一行（不再跟頁籤切換共用同一行），可以直接用 hidden 整個移除，不會有版面跳動問題
             document.getElementById('search-box').classList.toggle('hidden', tab === 'itinerary');
             document.getElementById('category-chips').classList.toggle('hidden', tab === 'itinerary');
-            // ✈️ 航班查詢區塊只在「所有景點」頁籤顯示：查到航班後，「我的行程」頁籤的時間軸本來就會顯示抵達/起飛卡片，
-            // 兩邊同時放一份輸入表單只是佔版面、資訊重複，「我的行程」頁籤更需要把空間留給時間軸內容
-            document.getElementById('flight-section').classList.toggle('hidden', tab === 'itinerary');
+            // ✈️ 航班查詢區塊改成只在「我的行程」頁籤顯示（跟其他項目相反）：使用者提出大部分人是拿航班
+            // 資訊來排行程，查詢表單原本放在「所有景點」、結果卡片卻只顯示在「我的行程」，兩邊要來回切換，
+            // 搬到這裡查完同一頁往下滑就看得到結果，不用切頁籤
+            document.getElementById('flight-section').classList.toggle('hidden', tab !== 'itinerary');
             // 🍄 Hero 標語區塊同理只在「所有景點」頁籤顯示：切到「我的行程」是要實際排程/看時間軸的工作畫面，
             // 每次都要先看過一輪標語才捲得到內容，反而是干擾，不是幫助
             document.getElementById('hero-section').classList.toggle('hidden', tab === 'itinerary');
