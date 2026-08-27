@@ -181,37 +181,71 @@
         <!-- 🍄 首頁 Hero 區塊：一進站先講「這是什麼、能幫你做什麼」，再進到下面的實際操作區塊。
              不是入口頁——兩顆按鈕只是捲動到頁面下方對應區塊，內容本來就都在同一頁，不點按鈕手動往下滑
              一樣看得到全部功能。字體/色票完全沿用既有的 Zen Maru Gothic 標題字跟 Kinopio 紫／主藍色系。 -->
-        <div id="hero-section" class="reveal-hero mb-8 py-10 sm:py-14 text-center">
+        <!-- 🔒 使用者實測回報首頁排版五項調整（2026-08-27 討論定案）：
+             1. 消除中段空白斷層：整段 hero 的內部間距全面收緊（py-10~14→py-6~8、mb-8→mb-3、mb-7→mb-4、
+                stats 的 mb-8→mb-5），搜尋列跟頁籤緊接在 CTA 按鈕下方，不再隔著一大塊空白
+             2. 統一兩顆 CTA 按鈕視覺語言：兩者本來就都是 rounded-2xl（技術上圓角一致，只是副按鈕原本邊框
+                很淡、沒陰影，視覺上顯得比較「扁平方正」）——這裡把副按鈕的外框顏色改成跟文字同色、加粗到
+                1.5px，讓「這是外框按鈕」的視覺意圖更明確；padding 也從 px-5 對齊成跟主按鈕一樣的 px-6
+             4. 統計卡片加圖示：改成單色線稿 SVG（不用彩色 emoji，跟卡片、標籤都會撞色），景點＝定位圖釘
+                （直接沿用景點卡片「開啟地圖」按鈕的同一個圖示）、地區＝折疊地圖、AI＝星芒，全部染成跟數字
+                一樣的 #2c5f7c 藍，圖示放左側小圓角色塊裡，數字/文字堆疊在右側（不是像第一版那樣置中在上方）
+             5. 副標題拆成三個短標籤取代一整句密集資訊，且刻意不加圖示——原本圖示版的標籤跟統計卡片的圖示
+                概念重疊（尤其「AI」重複出現兩次），拿掉標籤圖示後卡片負責「一眼看數字」、標籤負責「快速
+                掃過功能」，分工清楚
+             （第 3 點「浮動按鈕改用對話泡泡跟 Logo 蘑菇區隔」在下面 #chat-fab 那裡改） -->
+        <div id="hero-section" class="reveal-hero mb-3 py-6 sm:py-8 text-center">
             <!-- 兩行刻意不置中：第一行用 padding-left、第二行用相同比例的 padding-right，
                  靠左/靠右的內縮距離完全對稱，形成一個輕微的錯位排版節奏，不是隨便偏一邊。 -->
             <!-- 「心動」「行動」這兩個重點色的字放大 2 級（text-3xl→5xl、sm:text-5xl→7xl），比整行放大更精準凸顯，
                  換行風險也比整句放大低。inline-block 讓放大的字不擠壓同一行其他字的基線對齊。 -->
-            <h1 class="hand text-3xl sm:text-5xl font-black text-slate-800 leading-tight mb-4 max-w-lg sm:max-w-2xl mx-auto">
+            <h1 class="hand text-3xl sm:text-5xl font-black text-slate-800 leading-tight mb-3 max-w-lg sm:max-w-2xl mx-auto">
                 <span class="block text-left pl-[8%] sm:pl-[12%]">把<span class="inline-block text-5xl sm:text-7xl text-[#2c5f7c]">心動</span>，</span>
                 <span class="block text-right pr-[8%] sm:pr-[12%]">排成<span class="inline-block text-5xl sm:text-7xl text-[#2c5f7c]">行動</span>的每一天</span>
             </h1>
-            <p class="text-sm text-slate-500 leading-loose max-w-md mx-auto mb-7">
-                景點資料庫、航班查詢與天氣提醒、AI 客製化建議、拖拉分天排程——從找景點到排好整趟行程，一站完成。
-            </p>
-            <div class="flex items-center justify-center gap-3 flex-wrap mb-8">
-                <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
-                    <div class="hand text-3xl font-black text-[#2c5f7c]" id="hero-count-attractions">38+</div>
-                    <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">精選景點</div>
+            <!-- 三個短標籤取代原本一整句密集資訊，故意不加圖示（見上方大註解第 5 點） -->
+            <div class="flex items-center justify-center gap-2 flex-wrap max-w-md mx-auto mb-4">
+                <span class="text-[11px] font-bold text-[#5c7a8a] bg-[#eef3f5] border border-[#dde7ea] rounded-full px-3 py-1">景點資料庫</span>
+                <span class="text-[11px] font-bold text-[#5c7a8a] bg-[#eef3f5] border border-[#dde7ea] rounded-full px-3 py-1">航班查詢與天氣提醒</span>
+                <span class="text-[11px] font-bold text-[#5c7a8a] bg-[#eef3f5] border border-[#dde7ea] rounded-full px-3 py-1">AI 客製化建議</span>
+            </div>
+            <div class="flex items-center justify-center gap-3 flex-wrap mb-5">
+                <!-- 定位圖釘：跟景點卡片「開啟地圖」按鈕同一個 SVG path，全站同一個視覺語言不用重畫一個新圖示 -->
+                <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl pl-3 pr-4 py-2.5 min-w-[112px] flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-lg bg-[#eaf1f4] flex items-center justify-center shrink-0">
+                        <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                    </div>
+                    <div class="text-left">
+                        <div class="hand text-2xl font-black text-[#2c5f7c] leading-tight" id="hero-count-attractions">38+</div>
+                        <div class="text-[10px] font-bold text-[#8a7a5c]">精選景點</div>
+                    </div>
                 </div>
-                <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
-                    <div class="hand text-3xl font-black text-[#2c5f7c]">7</div>
-                    <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">大地區分類</div>
+                <!-- 折疊地圖：代表「地區分類」 -->
+                <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl pl-3 pr-4 py-2.5 min-w-[112px] flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-lg bg-[#eaf1f4] flex items-center justify-center shrink-0">
+                        <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 4 5.5v15L9 18l6 3 5-2.5v-15L15 6l-6-3Z"/><path d="M9 3v15M15 6v15"/></svg>
+                    </div>
+                    <div class="text-left">
+                        <div class="hand text-2xl font-black text-[#2c5f7c] leading-tight">7</div>
+                        <div class="text-[10px] font-bold text-[#8a7a5c]">大地區分類</div>
+                    </div>
                 </div>
-                <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl px-5 py-3 min-w-[104px]">
-                    <div class="hand text-3xl font-black text-[#2c5f7c]">AI</div>
-                    <div class="text-[10.5px] font-bold text-[#8a7a5c] mt-0.5">客製化建議</div>
+                <!-- 星芒：代表「AI」 -->
+                <div class="bg-[#faf6ee] border border-[#e8dcc8] rounded-2xl pl-3 pr-4 py-2.5 min-w-[112px] flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-lg bg-[#eaf1f4] flex items-center justify-center shrink-0">
+                        <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>
+                    </div>
+                    <div class="text-left">
+                        <div class="hand text-2xl font-black text-[#2c5f7c] leading-tight">AI</div>
+                        <div class="text-[10px] font-bold text-[#8a7a5c]">客製化建議</div>
+                    </div>
                 </div>
             </div>
             <div class="flex items-center justify-center gap-2.5 flex-wrap">
                 <button onclick="smoothScrollToId('browse-section')" class="px-6 py-3 text-sm font-bold text-white bg-[#6b5a7a] hover:bg-[#564865] rounded-2xl shadow-md transition">
                     🍄 開始規劃行程 ↓
                 </button>
-                <button onclick="switchTab('itinerary'); smoothScrollToId('flight-type-choice')" class="px-5 py-3 text-sm font-bold text-[#2c5f7c] bg-[#faf6ee] hover:bg-[#eaf1f4] border border-[#d3e3e9] rounded-2xl transition">
+                <button onclick="switchTab('itinerary'); smoothScrollToId('flight-type-choice')" class="px-6 py-3 text-sm font-bold text-[#2c5f7c] bg-transparent hover:bg-[#eaf1f4] border-[1.5px] border-[#2c5f7c] rounded-2xl transition">
                     ✈️ 我有航班資訊了 →
                 </button>
             </div>
@@ -443,6 +477,30 @@
         </div>
     </div>
 
+    <!-- 📇 景點詳細層 Modal：瀏覽層卡片（Netflix 海報牆風格，只留大圖/名稱/評分/主分類/一句話理由）
+         點下去才開這個 Modal 看完整資訊。內容直接沿用既有的 buildAttractionCardHTML() 全量卡片，
+         樣式不重新設計，只是換了個容器裝著。互動邏輯：半透明深色遮罩、點遮罩本身關閉、右上角 ✕ 關閉、Esc 關閉。
+         🔒 命名獨立成 detail-modal，跟 export-modal／checklist-modal 各自管各自的 hidden 狀態，互不干擾。
+         點遮罩關閉是判斷「點擊的目標就是最外層遮罩本身」（event.target === event.currentTarget），
+         點卡片內容不會被誤判成點遮罩——內容容器本身不會冒泡觸發這個 onclick，因為事件目標會是內層元素。 -->
+    <div id="detail-modal" onclick="if (event.target === event.currentTarget) closeDetailModal()"
+        class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <!-- 🔒 使用者實測回報：電腦版打開這個 Modal 要捲動才看得到完整卡片，希望電腦版盡量不用捲——
+             量過完整版卡片（含 Modal 標題列）實際高度約 617px，改成 max-h-[min(92vh,660px)]：
+             視窗夠高（大約 ≥720px，一般筆電螢幕都符合）就直接顯示 660px 固定上限，完整卡片剛好塞得下
+             不用捲動；視窗真的很矮（例如切割視窗、平板橫放）才會退回吃 92% 視窗高度，這時才需要捲動
+             （手機本來就維持可以捲動，這裡沒有另外排除手機） -->
+        <div class="bg-[#faf6ee] w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[min(92vh,660px)]">
+            <div class="px-5 py-3 border-b border-[#e8dcc8] flex items-center justify-between shrink-0">
+                <h3 class="hand text-sm font-bold text-slate-800">景點詳細資訊</h3>
+                <button onclick="closeDetailModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
+            </div>
+            <div id="detail-modal-body" class="p-4 overflow-y-auto">
+                <!-- JS 動態寫入完整版 buildAttractionCardHTML(item) -->
+            </div>
+        </div>
+    </div>
+
     <!-- 🧳 行前準備清單 Modal（純本地勾選清單，不需要任何 API，狀態存在 LocalStorage） -->
     <div id="checklist-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-[#faf6ee] w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -472,11 +530,16 @@
 
     <!-- 🍄 Kinopio 聊天問答：浮動按鈕（bottom-24 而不是 bottom-6，避免跟上面的 Toast 疊在一起）+ 聊天面板。
          外層 #chat-fab-wrap 負責顯示模糊暈染光暈（CSS 定義在 <style> 區塊），按鈕本身底色加深，
-         在網頁偏淺的暖色背景上才能把光暈襯出來 -->
+         在網頁偏淺的暖色背景上才能把光暈襯出來。
+         🔒 使用者實測回報：這顆按鈕跟左上角 Header Logo 都用同一個 🍄 圖示，容易讓人搞混是不是同一個功能——
+         改成對話泡泡線稿圖示，跟純裝飾用的品牌 Logo 做出區隔，但保留原本的紫色漸層跟光暈質感，
+         不需要使用者重新學一次「這顆按鈕是做什麼的」，圖形語言（對話泡泡＝可以聊天）本身就有暗示性 -->
     <div id="chat-fab-wrap">
         <button onclick="toggleChatPanel()" id="chat-fab"
-            class="relative z-[1] w-full h-full rounded-full bg-gradient-to-br from-[#6b5a7a] to-[#564865] hover:from-[#564865] hover:to-[#2e2639] text-white text-2xl flex items-center justify-center transition"
-            title="問 Kinopio 旅遊問題">🍄</button>
+            class="relative z-[1] w-full h-full rounded-full bg-gradient-to-br from-[#6b5a7a] to-[#564865] hover:from-[#564865] hover:to-[#2e2639] text-white flex items-center justify-center transition"
+            title="問 Kinopio 旅遊問題">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        </button>
     </div>
 
     <div id="chat-panel" class="hidden fixed bottom-24 left-6 z-40 w-[min(360px,calc(100vw-2rem))] h-[min(520px,calc(100vh-8rem))] bg-[#faf6ee] paper-texture rounded-3xl shadow-2xl border border-[#e3dae8] flex flex-col overflow-hidden">
@@ -1055,9 +1118,11 @@
             if (event.key !== 'Escape') return;
             const exportModal = document.getElementById('export-modal');
             const checklistModal = document.getElementById('checklist-modal');
+            const detailModal = document.getElementById('detail-modal');
             const chatPanel = document.getElementById('chat-panel');
             if (!exportModal.classList.contains('hidden')) closeExportModal();
             else if (!checklistModal.classList.contains('hidden')) closeChecklistModal();
+            else if (!detailModal.classList.contains('hidden')) closeDetailModal();
             else if (!chatPanel.classList.contains('hidden')) toggleChatPanel();
         });
 
@@ -1947,8 +2012,8 @@ ${list}
                         <div class="relative">
                             <button onclick="scrollRail(this, -1)" title="往左看"
                                 class="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-8 h-8 rounded-full border border-[#d8cba8] bg-[#faf6ee] items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] shadow-md transition">‹</button>
-                            <div class="rail-track flex gap-4 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0" style="scroll-snap-type:x proximity;">
-                                ${items.map(item => `<div class="flex-none w-72" style="scroll-snap-align:start;">${buildAttractionCardHTML(item)}</div>`).join('')}
+                            <div class="rail-track flex gap-3 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0" style="scroll-snap-type:x proximity;">
+                                ${items.map(buildAttractionBrowseCardHTML).join('')}
                             </div>
                             <button onclick="scrollRail(this, 1)" title="往右看"
                                 class="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-10 w-8 h-8 rounded-full border border-[#d8cba8] bg-[#faf6ee] items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] shadow-md transition">›</button>
@@ -2024,7 +2089,41 @@ ${list}
             grid.innerHTML = filtered.map(buildAttractionCardHTML).join('');
         }
 
-        // 完整資訊卡片：格狀清單跟地區橫排共用同一份，確保兩種瀏覽方式看到的資訊完全一致，不會一邊改了另一邊沒跟上
+        // 🎬 瀏覽層卡片（Netflix 海報牆風格）：地區橫排原本直接用下面的完整卡片，一張 400+px 高，
+        // 橫向捲動一次只看得到 3-4 張，不利快速比較景點。改成只留「判斷要不要點進去看」需要的最少資訊——
+        // 大圖、名稱、評分、主要分類（category 欄位第一個）、一句話推薦理由（CSS line-clamp 自動截斷＋
+        // title 屬性 hover 看完整內容，跟全站其他截斷欄位同一套處理方式，不用自己手動算字數切字串）。
+        // 點下去才呼叫 openDetailModal() 開 Modal 看完整版（下面的 buildAttractionCardHTML()，樣式不變）。
+        function buildAttractionBrowseCardHTML(item) {
+            const safeName = escapeHtml(item.name);
+            const safeImage = escapeHtml(item.image);
+            const safeRating = escapeHtml(item.rating);
+            const safeReason = escapeHtml(item.reason);
+            const primaryCategory = item.category ? item.category.split(',')[0].trim() : '熱門景點';
+            return `
+                <button type="button" onclick="openDetailModal('${item.id}')"
+                    class="flex-none w-40 sm:w-44 text-left bg-[#faf6ee] paper-texture rounded-lg overflow-hidden border border-[#e8dcc8] shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200"
+                    style="scroll-snap-align:start;">
+                    <div class="relative h-24 sm:h-28 overflow-hidden bg-[#e8dcc8]">
+                        <img src="${safeImage}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="this.style.display='none'">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div>
+                        <div class="absolute top-1.5 left-1.5 max-w-[75%]">
+                            <span class="px-1.5 py-0.5 text-[10px] font-medium text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full truncate block">${escapeHtml(primaryCategory)}</span>
+                        </div>
+                        <div class="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold text-white bg-black/40 backdrop-blur-md rounded-full">
+                            <span class="text-amber-400">★</span><span>${safeRating}</span>
+                        </div>
+                    </div>
+                    <div class="p-2">
+                        <h4 class="hand text-xs font-bold text-slate-800 truncate" title="${safeName}">${safeName}</h4>
+                        <p class="text-[10.5px] text-slate-500 mt-0.5 line-clamp-1" title="${safeReason}">${safeReason}</p>
+                    </div>
+                </button>
+            `;
+        }
+
+        // 完整資訊卡片：詳細層 Modal（openDetailModal）跟格狀搜尋結果清單共用同一份，確保兩種瀏覽方式
+        // 看到的資訊完全一致，不會一邊改了另一邊沒跟上
         function buildAttractionCardHTML(item) {
                 const isSelected = myItineraryIds.has(item.id);
                 const mapUrl = getMapUrl(item);
@@ -2601,6 +2700,21 @@ ${list}
 
         function closeExportModal() {
             document.getElementById('export-modal').classList.add('hidden');
+        }
+
+        // 📇 景點詳細層 Modal：瀏覽層卡片點下去才呼叫，把完整版 buildAttractionCardHTML(item) 寫進 Modal 裡
+        function openDetailModal(id) {
+            const item = attractionsData.find(a => a.id === id);
+            if (!item) return;
+            document.getElementById('detail-modal-body').innerHTML = buildAttractionCardHTML(item);
+            document.getElementById('detail-modal').classList.remove('hidden');
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detail-modal').classList.add('hidden');
+            // 🔒 清空內容：避免關閉後 DOM 裡還留著一份 id="card-${id}"，下次瀏覽層卡片按鈕操作
+            // 用 document.getElementById() 找到的可能是這份看不見的舊內容，而不是畫面上真正顯示的那份
+            document.getElementById('detail-modal-body').innerHTML = '';
         }
 
         // 複製文字到剪貼簿：優先用現代 Clipboard API（真的能回報成功/失敗），失敗或不支援
