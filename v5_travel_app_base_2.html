@@ -144,7 +144,7 @@
         <!-- 🍄 首頁 Hero 區塊：一進站先講「這是什麼、能幫你做什麼」，再進到下面的實際操作區塊。
              不是入口頁——兩顆按鈕只是捲動到頁面下方對應區塊，內容本來就都在同一頁，不點按鈕手動往下滑
              一樣看得到全部功能。字體/色票完全沿用既有的 Zen Maru Gothic 標題字跟 Kinopio 紫／主藍色系。 -->
-        <div class="mb-8 py-10 sm:py-14 text-center">
+        <div id="hero-section" class="mb-8 py-10 sm:py-14 text-center">
             <!-- 兩行刻意不置中：第一行用 padding-left、第二行用相同比例的 padding-right，
                  靠左/靠右的內縮距離完全對稱，形成一個輕微的錯位排版節奏，不是隨便偏一邊。 -->
             <h1 class="hand text-3xl sm:text-5xl font-black text-slate-800 leading-tight mb-4 max-w-lg sm:max-w-2xl mx-auto">
@@ -1737,6 +1737,9 @@ ${list}
             // ✈️ 航班查詢區塊只在「所有景點」頁籤顯示：查到航班後，「我的行程」頁籤的時間軸本來就會顯示抵達/起飛卡片，
             // 兩邊同時放一份輸入表單只是佔版面、資訊重複，「我的行程」頁籤更需要把空間留給時間軸內容
             document.getElementById('flight-section').classList.toggle('hidden', tab === 'itinerary');
+            // 🍄 Hero 標語區塊同理只在「所有景點」頁籤顯示：切到「我的行程」是要實際排程/看時間軸的工作畫面，
+            // 每次都要先看過一輪標語才捲得到內容，反而是干擾，不是幫助
+            document.getElementById('hero-section').classList.toggle('hidden', tab === 'itinerary');
             renderCards();
         }
 
