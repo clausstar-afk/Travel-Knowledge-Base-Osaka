@@ -1459,15 +1459,19 @@
         }
 
         // 拖拉排序：放到容器（某一天的空白處，或「未分配」區）的最後面
+        // 🔒 使用者實測回報：調整已經排好的行程（換天、同天重排）時也會跳出「要不要健檢」，
+        // 感覺太急躁——只留「把景點從未分配區排進某一天」這個真正代表「剛完成排程」的動作才提醒，
+        // 這裡先記住丟進來之前是不是未分配區的項目，才知道這次操作算不算這個意義上的「排定」
         function handleContainerDrop(e, dayIndex) {
             e.preventDefault();
             if (!draggedItemId) return;
+            const wasUnassigned = unassignedIds.includes(draggedItemId);
             removeFromAllDaySlots(draggedItemId);
             if (dayIndex === 0) unassignedIds.push(draggedItemId);
             else dayPlan[dayIndex - 1].push(draggedItemId);
             draggedItemId = null;
             saveDayPlan();
-            maybeNudgeHealthCheck();
+            if (wasUnassigned && dayIndex !== 0) maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
@@ -1485,13 +1489,15 @@
             const targetOriginalIdx = list.indexOf(targetItemId);
             const insertAfter = draggedOriginalIdx !== -1 && draggedOriginalIdx < targetOriginalIdx;
 
+            // 🔒 同理只在「從未分配區排進某一天」時才提醒健檢，同天重排／換天不算
+            const wasUnassigned = unassignedIds.includes(draggedItemId);
             removeFromAllDaySlots(draggedItemId);
             const targetIdx = list.indexOf(targetItemId);
             const insertIdx = targetIdx === -1 ? list.length : (insertAfter ? targetIdx + 1 : targetIdx);
             list.splice(insertIdx, 0, draggedItemId);
             draggedItemId = null;
             saveDayPlan();
-            maybeNudgeHealthCheck();
+            if (wasUnassigned && dayIndex !== 0) maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
@@ -3159,6 +3165,9 @@ ${factList}
         }
 
         // 把景點直接指定到某一天（0 代表未分配區），給下拉選單這種一步到位的操作用
+        // 🔒 這個函式同時服務「◀▶ 換天按鈕」（在已排定的日子間搬動）跟「排入天數下拉選單」（把未分配
+        // 景點一步排進某一天）兩種操作，但只有後者才算「剛完成排程」，換天不該觸發健檢提醒——
+        // 只在「原本在未分配區、這次被排進某一天」時才提醒，兩個已排定的日子互換不算
         function moveItemToDay(itemId, targetDayIdx) {
             const curDayIdx = findItemLocation(itemId);
             const newDayIdx = Math.max(0, Math.min(dayCount, targetDayIdx));
@@ -3167,7 +3176,7 @@ ${factList}
             if (newDayIdx === 0) unassignedIds.push(itemId);
             else dayPlan[newDayIdx - 1].push(itemId);
             saveDayPlan();
-            maybeNudgeHealthCheck();
+            if (curDayIdx === 0 && newDayIdx !== 0) maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
@@ -3234,7 +3243,6 @@ ${factList}
             const next = Math.max(STAY_OVERRIDE_MIN, Math.min(STAY_OVERRIDE_MAX, current + deltaMin));
             stayOverrides[itemId] = next;
             saveDayPlan();
-            maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
@@ -3242,7 +3250,6 @@ ${factList}
         function resetStayOverride(itemId) {
             delete stayOverrides[itemId];
             saveDayPlan();
-            maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
