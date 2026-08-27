@@ -1731,31 +1731,11 @@ ${list}
             return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=transit`;
         }
 
-        // 📍 地區橫向排：單張小卡片，整張卡片就是「加入/移出行程」的按鈕（比塞一顆迷你圖示按鈕更好點）。
-        // 已加入行程的卡片邊框從虛線變實線＋苔綠色，跟原本格狀卡片的「已選取」視覺語言一致，不新增色號。
-        function renderCompactCard(item) {
-            const isSelected = myItineraryIds.has(item.id);
-            const safeName = escapeHtml(item.name);
-            const safeImage = escapeHtml(item.image);
-            const safeRating = escapeHtml(item.rating);
-            const jsAttrName = escapeJsAttr(item.name);
-            const cardBorderClass = isSelected
-                ? 'border-solid border-[#6b8f71] ring-2 ring-[#dbe7d3]'
-                : 'border-dashed border-[#c9a876]';
-            return `
-                <button onclick="toggleItinerary('${item.id}', '${jsAttrName}'); renderCards();"
-                    class="relative flex-none w-24 text-left bg-[#faf6ee] paper-texture rounded-lg overflow-hidden border-2 ${cardBorderClass} shadow-sm transition"
-                    style="scroll-snap-align:start;">
-                    <div class="relative h-16 bg-[#e8dcc8]">
-                        <img src="${safeImage}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="this.style.display='none'">
-                        ${isSelected ? `<span class="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#6b8f71] text-white text-[9px] flex items-center justify-center shadow">✓</span>` : ''}
-                    </div>
-                    <div class="p-1.5">
-                        <p class="text-[10.5px] font-bold text-slate-800 leading-tight line-clamp-2 min-h-[2.4em]">${safeName}</p>
-                        <p class="text-[9.5px] font-bold text-[#6b5535] mt-0.5">★ ${safeRating}</p>
-                    </div>
-                </button>
-            `;
+        // 點左右箭頭捲動同一排：抓按鈕旁邊 relative 容器裡的 .rail-track，捲動距離抓容器可視寬度的九成，
+        // 這樣每次點擊大約翻一個螢幕寬度的卡片，不會捲太少（一直點好幾下）也不會捲太多（跳過中間的卡片）。
+        function scrollRail(btn, direction) {
+            const rail = btn.parentElement.querySelector('.rail-track');
+            rail.scrollBy({ left: direction * rail.clientWidth * 0.9, behavior: 'smooth' });
         }
 
         // 依 getMainAreaKey(item.area) 分組成一排一排，順序沿用資料庫原始順序（本來就是市中心→近郊的地理動線，
@@ -1763,11 +1743,15 @@ ${list}
         function renderAreaRows() {
             const areasInOrder = [];
             const byArea = new Map();
-            attractionsData.forEach(item => {
-                const key = getMainAreaKey(item.area);
-                if (!byArea.has(key)) { byArea.set(key, []); areasInOrder.push(key); }
-                byArea.get(key).push(item);
-            });
+            // 分類 Chips 篩選在地區橫排一樣要生效：選了某個分類，只有符合的景點會出現，
+            // 整排都沒有符合分類的地區直接不渲染那一排。
+            attractionsData
+                .filter(item => currentCategory === 'ALL' || (item.category && item.category.includes(currentCategory)))
+                .forEach(item => {
+                    const key = getMainAreaKey(item.area);
+                    if (!byArea.has(key)) { byArea.set(key, []); areasInOrder.push(key); }
+                    byArea.get(key).push(item);
+                });
 
             const container = document.getElementById('area-rows');
             container.innerHTML = areasInOrder.map(area => {
@@ -1778,8 +1762,16 @@ ${list}
                             <h3 class="hand text-sm font-black text-slate-800 flex items-center gap-1.5">📍 ${escapeHtml(area)}</h3>
                             <span class="text-[10px] font-bold text-[#9678a5] bg-[#f2eef4] px-2 py-0.5 rounded-full shrink-0">${items.length} 個景點</span>
                         </div>
-                        <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0" style="scroll-snap-type:x proximity;">
-                            ${items.map(renderCompactCard).join('')}
+                        <!-- 滑鼠沒有觸控滑動的直覺，桌機/平板另外給左右箭頭按鈕，預設就看得到（不做 hover 才淡入，
+                             不然又變成另一種「看不到就不知道能點」）。手機維持原生觸控滑動，箭頭用 sm: 隱藏不佔版面。 -->
+                        <div class="relative">
+                            <button onclick="scrollRail(this, -1)" title="往左看"
+                                class="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-8 h-8 rounded-full border border-[#d8cba8] bg-[#faf6ee] items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] shadow-md transition">‹</button>
+                            <div class="rail-track flex gap-4 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0" style="scroll-snap-type:x proximity;">
+                                ${items.map(item => `<div class="flex-none w-72" style="scroll-snap-align:start;">${buildAttractionCardHTML(item)}</div>`).join('')}
+                            </div>
+                            <button onclick="scrollRail(this, 1)" title="往右看"
+                                class="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-10 w-8 h-8 rounded-full border border-[#d8cba8] bg-[#faf6ee] items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] shadow-md transition">›</button>
                         </div>
                     </div>
                 `;
@@ -1799,8 +1791,11 @@ ${list}
                     timelineContainer.classList.remove('hidden');
                     generateDynamicTimeline();
                 }
-                grid.classList.add('hidden');
-                areaRows.classList.add('hidden');
+                // 🔒 隱藏的同時把內容清空，不留殘留 DOM——格狀清單／地區橫排都用同一批 card-${id} 當元素 id，
+                // 舊內容只是隱藏、沒清空的話會有重複 id，document.getElementById() 抓到的可能是看不見的舊卡片，
+                // 導致「加入行程」按鈕實際有生效、但畫面上看得到的卡片沒跟著更新（真的踩過這個 bug）。
+                grid.classList.add('hidden'); grid.innerHTML = '';
+                areaRows.classList.add('hidden'); areaRows.innerHTML = '';
                 emptyState.classList.add('hidden');
                 return;
             }
@@ -1809,18 +1804,17 @@ ${list}
             // （這個 class 只在 generateDynamicTimeline 裡被移除，切回「所有景點」頁籤時要在這裡主動補上 hidden）
             document.getElementById('ai-style-input-section').classList.add('hidden');
 
-            // 📍 純瀏覽（沒打關鍵字、沒用 AI 搜尋）用地區橫向排；一旦開始搜尋，改回原本的格狀清單＋分類 Chips，
-            // 因為那個模式更適合「比對結果」，跟 Netflix 搜尋時退回格狀清單是同一個邏輯
+            // 📍 純瀏覽（沒打關鍵字、沒用 AI 搜尋）用地區橫向排；一旦開始搜尋，改回原本的格狀清單，
+            // 因為那個模式更適合「比對結果」。分類 Chips 兩種模式都要顯示，維持原本篩選功能不受影響。
             const isBrowsing = !currentKeyword && aiSearchResultIds === null;
-            document.getElementById('category-chips').classList.toggle('hidden', isBrowsing);
             if (isBrowsing) {
-                grid.classList.add('hidden');
+                grid.classList.add('hidden'); grid.innerHTML = ''; // 清空，避免跟地區橫排的 card-${id} 重複
                 emptyState.classList.add('hidden');
                 areaRows.classList.remove('hidden');
                 renderAreaRows();
                 return;
             }
-            areaRows.classList.add('hidden');
+            areaRows.classList.add('hidden'); areaRows.innerHTML = ''; // 清空，避免跟格狀清單的 card-${id} 重複
 
             // 篩選過濾邏輯（只在「所有景點」頁籤使用）
             let filtered = attractionsData.filter(item => {
@@ -1850,7 +1844,11 @@ ${list}
             emptyState.classList.add('hidden');
             grid.classList.remove('hidden');
 
-            grid.innerHTML = filtered.map(item => {
+            grid.innerHTML = filtered.map(buildAttractionCardHTML).join('');
+        }
+
+        // 完整資訊卡片：格狀清單跟地區橫排共用同一份，確保兩種瀏覽方式看到的資訊完全一致，不會一邊改了另一邊沒跟上
+        function buildAttractionCardHTML(item) {
                 const isSelected = myItineraryIds.has(item.id);
                 const mapUrl = getMapUrl(item);
                 const lastEntryInfo = getLastEntryInfo(item);
@@ -2001,7 +1999,6 @@ ${list}
                     </div>
                 </div>
                 `;
-            }).join('');
         }
 
         // 雙向 Toggle 加入/移除行程功能 (不破壞整顆按鈕 DOM)
