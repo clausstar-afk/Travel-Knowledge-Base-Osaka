@@ -514,7 +514,7 @@
         // ⚠️ 重要提醒：這是純前端網頁，API Key 寫在這裡任何人按「檢查」都看得到，跟AERODATABOX_KEY一樣的風險。
         // Google AI Studio的免費額度也有限（依模型而定，通常每分鐘/每日有請求數上限），
         // 正式環境建議做一個小型後端來藏Key，demo階段可接受風險，但記得別把Key外流。
-        const GEMINI_API_KEY = 'AQ.Ab8RN6JzIzmzBH5r9vtJKaswbWSt2aNJcLJbYaBq2yjoR3OJrg';
+        const GEMINI_API_KEY = 'AQ.Ab8RN6Ik8qTwsmlmtyRek1f6I_EJUumqLW6Ya_aotik8_aJ7eQ';
         // 模型名稱請以你自己Google AI Studio後台實際顯示的可用模型為準，這裡先用一個常見的輕量模型示範
         const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 
@@ -522,34 +522,55 @@
         // 失敗才降級打 OpenRouter 的免費模型（Gemma 4 26B A4B → 31B），跟上面兩組 Key 同樣的風險/做法。
         // 這組 Key 已經在 OpenRouter 後台設定 Credit limit（花費上限），就算 Key 外流，最多損失也鎖死在那個金額內。
         // 免費模型額度是「整個帳號」共用（不是每個訪客各自一份），沒儲值過的話大約 50 次/天，超過會回傳 429。
-        const OPENROUTER_API_KEY = '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';
+        const OPENROUTER_API_KEY = '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';
         // 三層備援：Gemini 額度池跟 OpenRouter 完全獨立，兩邊都出問題的機率低很多；
         // OpenRouter 這兩個免費模型退居第二／第三層，順序不變（26B A4B 較快，31B 當最後備援）
         const OPENROUTER_CHAT_MODEL_BACKUP1 = 'google/gemma-4-26b-a4b-it:free';
         const OPENROUTER_CHAT_MODEL_BACKUP2 = 'google/gemma-4-31b-it:free';
 
-        // 🚦 每個瀏覽器每天最多問 Kinopio 幾次：免費額度是「整個帳號」共用，尖峰時段少數人問太多次
-        // 會害其他人整天都問不了。這個上限沒辦法增加總額度，只是讓大家平均分配，減少被少數人用光的機率。
-        const CHAT_DAILY_LIMIT = 5;
-        function getChatDailyState() {
+        // 🚦 每個瀏覽器每天可以用幾次某個會呼叫外部 API 的功能：免費額度是「整個帳號／整組 Key」共用，
+        // 全班或尖峰時段少數人用太多次會害其他人整天都用不了。這個上限沒辦法增加總額度，只是讓大家
+        // 平均分配、減少被少數人一次用光的機率。聊天、AI搜尋、AI開場白、航班查詢都共用同一套機制，
+        // 只是各自存在不同的 localStorage key、上限次數依各功能實際會被連續呼叫的頻率各自訂。
+        function getDailyUsageState(storageKey) {
             const today = formatDateISO(new Date());
             try {
-                const saved = JSON.parse(localStorage.getItem('travel_kb_chat_daily') || 'null');
+                const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
                 if (saved && saved.date === today) return saved;
             } catch (e) {}
             return { date: today, count: 0 };
         }
-        function incrementChatDailyCount() {
-            const state = getChatDailyState();
+        function incrementDailyUsageCount(storageKey) {
+            const state = getDailyUsageState(storageKey);
             state.count += 1;
-            try { localStorage.setItem('travel_kb_chat_daily', JSON.stringify(state)); } catch (e) {}
+            try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch (e) {}
             return state.count;
         }
+
+        const CHAT_DAILY_LIMIT = 5;
+        const getChatDailyState = () => getDailyUsageState('travel_kb_chat_daily');
+        const incrementChatDailyCount = () => incrementDailyUsageCount('travel_kb_chat_daily');
+
+        // AI 語意搜尋：使用者瀏覽景點時可能反覆換關鍵字嘗試，上限給寬一點
+        const AI_SEARCH_DAILY_LIMIT = 10;
+        const getAiSearchDailyState = () => getDailyUsageState('travel_kb_aisearch_daily');
+        const incrementAiSearchDailyCount = () => incrementDailyUsageCount('travel_kb_aisearch_daily');
+
+        // AI 開場白：一趟行程通常只會生成／重新生成幾次（調整風格後再試一次），不需要太寬
+        const AI_NARRATIVE_DAILY_LIMIT = 5;
+        const getAiNarrativeDailyState = () => getDailyUsageState('travel_kb_ainarrative_daily');
+        const incrementAiNarrativeDailyCount = () => incrementDailyUsageCount('travel_kb_ainarrative_daily');
+
+        // 航班查詢：AeroDataBox 免費額度最緊繃（約 300 次查詢／月），一個人規劃一趟行程通常查
+        // 去程＋回程 2 次、頂多打錯重查一兩次，上限給最保守
+        const FLIGHT_LOOKUP_DAILY_LIMIT = 5;
+        const getFlightLookupDailyState = () => getDailyUsageState('travel_kb_flightlookup_daily');
+        const incrementFlightLookupDailyCount = () => incrementDailyUsageCount('travel_kb_flightlookup_daily');
 
         // ⚠️ 重要提醒：這是純前端網頁，API Key 寫在這裡任何人按「檢查」都看得到。
         // 這對正式商業產品是大忌，但對免費額度僅600次/月的學生demo可接受風險。
         // 記得換成你自己在 RapidAPI 重新產生的 Key，不要沿用之前對話裡曝光過的那組。
-        const AERODATABOX_KEY = '3479f97e9dmsh4f3942f838c7a0ap10532djsncab59544c462';
+        const AERODATABOX_KEY = '1930bbfca1mshb70f57d8533123ep16c4dcjsn8e5ae91131e7';
 
         // 🚦 AeroDataBox 免費方案速率限制是「每秒 1 次請求」，比月額度本身更容易踩到（尤其現在同時有
         // 航班查詢／自動完成／排班日期檢查三個功能都會打這組 API，動作快一點就可能兩次請求間隔不到 1 秒）。
@@ -805,6 +826,11 @@
                 statusEl.className = 'text-[11px] text-[#b04938] mt-2';
                 return;
             }
+            if (getFlightLookupDailyState().count >= FLIGHT_LOOKUP_DAILY_LIMIT) {
+                statusEl.textContent = `今天已經查詢 ${FLIGHT_LOOKUP_DAILY_LIMIT} 次航班囉，明天再回來查吧！`;
+                statusEl.className = 'text-[11px] text-[#b04938] mt-2';
+                return;
+            }
 
             btn.disabled = true;
             btn.textContent = '查詢中...';
@@ -817,6 +843,7 @@
 
                 if (!res.ok) throw new Error(`查詢失敗（狀態碼 ${res.status}）`);
 
+                incrementFlightLookupDailyCount(); // 只要真的問到 API 就算一次，不管查到的機場對不對——額度是被這次查詢動作本身消耗掉的
                 const data = await res.json();
                 const flight = Array.isArray(data) ? data[0] : data;
                 if (!flight) throw new Error('查無此航班資料');
@@ -1552,6 +1579,10 @@
                 showToast('請先輸入你想找的景點描述', false);
                 return;
             }
+            if (getAiSearchDailyState().count >= AI_SEARCH_DAILY_LIMIT) {
+                showToast(`今天已經用 Kinopio 搜尋 ${AI_SEARCH_DAILY_LIMIT} 次囉，明天再回來試試，或先用一般關鍵字搜尋！`, false);
+                return;
+            }
             const btn = document.getElementById('ai-search-btn');
             const statusEl = document.getElementById('ai-search-status');
             btn.disabled = true;
@@ -1585,6 +1616,7 @@ ${list}
 
                 const validIds = ids.filter(id => attractionsData.some(item => item.id === id));
                 aiSearchResultIds = validIds;
+                incrementAiSearchDailyCount(); // 真的成功呼叫才計次，失敗重試不算
 
                 if (validIds.length === 0) {
                     statusEl.textContent = '🍄 Kinopio 找不到符合的景點，試試換個描述？';
@@ -1657,6 +1689,16 @@ ${list}
             return escapeHtml(jsEscaped);
         }
 
+        // 🔒 CSV 的「官方網站」「地圖連結」欄位會直接塞進 <a href="...">。escapeHtml 只處理特殊字元，
+        // 沒辦法擋掉 `javascript:` 這種協議本身就是可執行程式碼的 URL——只跳脫字元、不驗證協議的話，
+        // CSV 被填入 `javascript:...` 照樣會在使用者點連結時執行。只允許 http/https 開頭的網址通過，
+        // 其餘一律換成安全的空連結，寧可連結失效也不要讓使用者一點就中招。
+        function sanitizeExternalUrl(url) {
+            const trimmed = String(url ?? '').trim();
+            if (/^https?:\/\//i.test(trimmed)) return escapeHtml(trimmed);
+            return '#';
+        }
+
         // 渲染 11 大元素卡片列表
         // 依景點資料組出 Google 地圖搜尋連結
         // 只用「名稱＋大阪」搜尋：Google 地圖的搜尋框會把送出的查詢字串整串顯示出來，
@@ -1667,7 +1709,7 @@ ${list}
             // 這種自動搜尋常常索引不到，直接貼分享網址最準）；沒填就沿用自動搜尋網址。
             // 🔒 自訂網址是從 CSV 貼進來的外部字串，跟其他欄位一樣不可信任，要跳脫才能安全塞進 href 屬性。
             if (item.mapUrl && item.mapUrl.trim() !== '') {
-                return escapeHtml(item.mapUrl.trim());
+                return sanitizeExternalUrl(item.mapUrl);
             }
             const searchQuery = `${item.name} 大阪`;
             return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery.trim())}`;
@@ -1768,7 +1810,7 @@ ${list}
                 const safeStay = escapeHtml(item.stay);
                 const safeStayRemark = escapeHtml(item.stayRemark || '建議白天前往');
                 const safeImage = escapeHtml(item.image);
-                const safeWebsite = escapeHtml(item.website);
+                const safeWebsite = sanitizeExternalUrl(item.website);
                 const safeRating = escapeHtml(item.rating);
                 const safeLastEntryInfo = escapeHtml(lastEntryInfo);
                 const jsAttrName = escapeJsAttr(item.name); // 給 onclick="...('${jsAttrName}')" 這種地方用
@@ -2738,6 +2780,10 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
                 showToast('請先把景點拖曳排入某一天，Kinopio 才能依天數幫你寫介紹', false);
                 return;
             }
+            if (getAiNarrativeDailyState().count >= AI_NARRATIVE_DAILY_LIMIT) {
+                showToast(`今天已經請 Kinopio 寫 ${AI_NARRATIVE_DAILY_LIMIT} 次介紹囉，明天再回來試試！`, false);
+                return;
+            }
 
             const styleInput = document.getElementById('ai-style-input').value.trim();
             const btn = document.getElementById('ai-narrative-btn');
@@ -2750,6 +2796,7 @@ ${weatherContext ? `以下是已經查到的天氣預報：\n${weatherContext}\n
             try {
                 currentAINarrative = await callGeminiForNarrative(selectedAttractions, groupedByDay, styleInput);
                 currentAINarrative.snapshot = getItineraryStructureSnapshot(); // 記錄這份文字是依哪個分天結構生成的（不只是選了哪些景點）
+                incrementAiNarrativeDailyCount(); // 真的成功才計次
                 showToast('Kinopio 已為你重新撰寫行程介紹！', true);
             } catch (err) {
                 console.error('AI敘事生成錯誤：', err);
@@ -3066,7 +3113,7 @@ ${factList}
             const safeStay = escapeHtml(item.stay || '1.5 - 2 小時');
             const safeTicket = escapeHtml(item.ticket || '參閱官網');
             const safeReason = escapeHtml(item.reason || '當地必訪熱門推薦景點！');
-            const safeWebsite = escapeHtml(item.website);
+            const safeWebsite = sanitizeExternalUrl(item.website);
             const jsAttrName = escapeJsAttr(item.name); // 給 onclick="...('${jsAttrName}')" 用
 
             // ✏️ 停留時間手動調整：預設只顯示 CSV 建議值＋鉛筆圖示，點了才展開成加減時數的介面，
