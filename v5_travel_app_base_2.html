@@ -145,8 +145,11 @@
              不是入口頁——兩顆按鈕只是捲動到頁面下方對應區塊，內容本來就都在同一頁，不點按鈕手動往下滑
              一樣看得到全部功能。字體/色票完全沿用既有的 Zen Maru Gothic 標題字跟 Kinopio 紫／主藍色系。 -->
         <div class="mb-8 py-10 sm:py-14 text-center">
-            <h1 class="hand text-2xl sm:text-4xl font-black text-slate-800 leading-relaxed mb-4" style="text-wrap:balance;">
-                把<span class="text-[#2c5f7c]">心動</span>排成<span class="text-[#2c5f7c]">行動</span>的每一天
+            <!-- 兩行刻意不置中：第一行用 padding-left、第二行用相同比例的 padding-right，
+                 靠左/靠右的內縮距離完全對稱，形成一個輕微的錯位排版節奏，不是隨便偏一邊。 -->
+            <h1 class="hand text-3xl sm:text-5xl font-black text-slate-800 leading-tight mb-4 max-w-lg sm:max-w-2xl mx-auto">
+                <span class="block text-left pl-[8%] sm:pl-[12%]">把<span class="text-[#2c5f7c]">心動</span>，</span>
+                <span class="block text-right pr-[8%] sm:pr-[12%]">排成<span class="text-[#2c5f7c]">行動</span>的每一天</span>
             </h1>
             <p class="text-sm text-slate-500 leading-loose max-w-md mx-auto mb-7">
                 景點資料庫、航班天氣查詢、AI 客製化建議、拖拉分天排程——從找景點到排好整趟行程，一站完成。
