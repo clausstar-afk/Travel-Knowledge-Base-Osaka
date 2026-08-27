@@ -374,49 +374,63 @@
              不用切頁籤。只在「我的行程」頁籤顯示，切到「所有景點」時隱藏（由 switchTab() 控制 hidden，
              跟原本邏輯相反）。 -->
         <div id="flight-section" class="reveal mt-8 mb-6 p-5 bg-[#eef3f5] border border-[#dde7ea] rounded-2xl hidden">
-            <h3 class="hand text-sm font-bold text-[#37505f] flex items-center gap-2 mb-3">
-                <span>✈️</span> 輸入航班資訊
-            </h3>
-            <!-- 去程/回程選擇：決定插入時間軸的最前面還是最後面。
-                 給這排加上 id，是因為 Hero「我有航班資訊了」按鈕改成直接捲到這裡（而不是整個 flight-section
-                 最上面的標題），使用者點下去第一眼就看到這個有互動性、決定查詢方向的選項，不用先看過一行
-                 現在已經拿掉的說明文字才捲得到 -->
-            <div id="flight-type-choice" class="flex items-center gap-4 mb-3 text-xs font-bold text-[#37505f]">
-                <label class="flex items-center gap-1.5 cursor-pointer">
-                    <input type="radio" name="flight-type" value="arrival" checked onchange="updateFlightDateConstraints()">
-                    🛬 去程（抵達大阪）
-                </label>
-                <label class="flex items-center gap-1.5 cursor-pointer">
-                    <input type="radio" name="flight-type" value="departure" onchange="updateFlightDateConstraints()">
-                    🛫 回程（離開大阪）
-                </label>
-            </div>
-            <div class="flex flex-col sm:flex-row gap-2 sm:items-end">
-                <!-- relative 容器讓下面的自訂建議清單可以絕對定位貼齊這個輸入框，取代原生 <datalist>
-                     （原生的樣式沒辦法客製、又跟全站風格不搭，且部分瀏覽器清空輸入框後選項不會跟著消失） -->
-                <div class="relative flex-1">
-                    <input type="text" id="flight-number-input" placeholder="去程航班號碼，例如 CI173"
-                        autocomplete="off" oninput="onFlightNumberInput()" onblur="hideFlightNumberSuggestions()"
-                        class="w-full px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
-                    <div id="flight-number-suggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#faf6ee] border border-[#c3d3d9] rounded-xl shadow-lg overflow-hidden"></div>
-                </div>
-                <!-- 🔒 原生 <input type="date"> 沒填值時的顯示方式完全由瀏覽器/裝置決定：桌面 Chrome 會自動顯示
-                     「年/月/日」這種提示文字，但不少手機版瀏覽器（實測過 Android Chrome）設計上就是留空、
-                     不會有任何提示文字，這是瀏覽器原生行為的落差，沒辦法用 CSS 控制。改成自己加一個固定會
-                     顯示的文字標籤，不依賴瀏覽器願不願意顯示提示文字。這個欄位多了 label 會比其他兩個欄位
-                     高，父層加 `sm:items-end` 讓整排元素底部對齊，桌面版三個欄位還是會維持原本水平切齊。 -->
-                <div class="w-full sm:w-auto">
-                    <label for="flight-date-input" class="block text-[11px] font-bold text-slate-500 mb-1">📅 出發日期</label>
-                    <input type="date" id="flight-date-input" onchange="onFlightDateChange()"
-                        class="w-full sm:w-auto px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
-                </div>
-                <button onclick="lookupFlight()" id="flight-lookup-btn"
-                    class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#37505f] rounded-xl transition shrink-0">
-                    查詢航班
+            <!-- 🔒 使用者要求：航班表單不預設收合，但加一個手動觸發的收合/展開按鈕，讓使用者自己決定
+                 要不要收起表單（查完航班之後表單本身用不到了，佔版面）。收合狀態顯示一行摘要文字，
+                 展開才看得到完整表單。isFlightFormCollapsed 只是畫面狀態，不存 LocalStorage——
+                 每次進站預設都是展開的，符合「不預設收合」的要求 -->
+            <div class="flex items-center justify-between gap-2 mb-3">
+                <h3 class="hand text-sm font-bold text-[#37505f] flex items-center gap-2">
+                    <span>✈️</span> 輸入航班資訊
+                </h3>
+                <button onclick="toggleFlightForm()" id="flight-form-toggle-btn" title="收合/展開航班表單"
+                    class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[#5c7a8a] hover:bg-[#dde7ea] transition">
+                    <span id="flight-form-toggle-icon" class="text-xs">▾</span>
                 </button>
             </div>
-            <p id="flight-date-warning" class="text-[11px] text-amber-600 mt-1 hidden"></p>
-            <p id="flight-lookup-status" class="text-[11px] text-[#5c7a8a] mt-2"></p>
+            <!-- 收合狀態下的摘要行，展開時隱藏 -->
+            <p id="flight-form-summary" class="hidden text-xs font-medium text-[#37505f]"></p>
+            <div id="flight-form-body">
+                <!-- 去程/回程選擇：決定插入時間軸的最前面還是最後面。
+                     給這排加上 id，是因為 Hero「我有航班資訊了」按鈕改成直接捲到這裡（而不是整個 flight-section
+                     最上面的標題），使用者點下去第一眼就看到這個有互動性、決定查詢方向的選項，不用先看過一行
+                     現在已經拿掉的說明文字才捲得到 -->
+                <div id="flight-type-choice" class="flex items-center gap-4 mb-3 text-xs font-bold text-[#37505f]">
+                    <label class="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="flight-type" value="arrival" checked onchange="updateFlightDateConstraints()">
+                        🛬 去程（抵達大阪）
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="flight-type" value="departure" onchange="updateFlightDateConstraints()">
+                        🛫 回程（離開大阪）
+                    </label>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2 sm:items-end">
+                    <!-- relative 容器讓下面的自訂建議清單可以絕對定位貼齊這個輸入框，取代原生 <datalist>
+                         （原生的樣式沒辦法客製、又跟全站風格不搭，且部分瀏覽器清空輸入框後選項不會跟著消失） -->
+                    <div class="relative flex-1">
+                        <input type="text" id="flight-number-input" placeholder="去程航班號碼，例如 CI173"
+                            autocomplete="off" oninput="onFlightNumberInput()" onblur="hideFlightNumberSuggestions()"
+                            class="w-full px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                        <div id="flight-number-suggestions" class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-[#faf6ee] border border-[#c3d3d9] rounded-xl shadow-lg overflow-hidden"></div>
+                    </div>
+                    <!-- 🔒 原生 <input type="date"> 沒填值時的顯示方式完全由瀏覽器/裝置決定：桌面 Chrome 會自動顯示
+                         「年/月/日」這種提示文字，但不少手機版瀏覽器（實測過 Android Chrome）設計上就是留空、
+                         不會有任何提示文字，這是瀏覽器原生行為的落差，沒辦法用 CSS 控制。改成自己加一個固定會
+                         顯示的文字標籤，不依賴瀏覽器願不願意顯示提示文字。這個欄位多了 label 會比其他兩個欄位
+                         高，父層加 `sm:items-end` 讓整排元素底部對齊，桌面版三個欄位還是會維持原本水平切齊。 -->
+                    <div class="w-full sm:w-auto">
+                        <label for="flight-date-input" class="block text-[11px] font-bold text-slate-500 mb-1">📅 出發日期</label>
+                        <input type="date" id="flight-date-input" onchange="onFlightDateChange()"
+                            class="w-full sm:w-auto px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                    </div>
+                    <button onclick="lookupFlight()" id="flight-lookup-btn"
+                        class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#37505f] rounded-xl transition shrink-0">
+                        查詢航班
+                    </button>
+                </div>
+                <p id="flight-date-warning" class="text-[11px] text-amber-600 mt-1 hidden"></p>
+                <p id="flight-lookup-status" class="text-[11px] text-[#5c7a8a] mt-2"></p>
+            </div>
         </div>
 
         <!-- AI 智能時間軸區塊 (新增) -->
@@ -976,6 +990,39 @@
             if (currentTab === 'itinerary') generateDynamicTimeline();
         }
 
+        // ✈️ 航班表單收合/展開：純畫面狀態，不存 LocalStorage，每次進站預設展開
+        let isFlightFormCollapsed = false;
+        function toggleFlightForm() {
+            isFlightFormCollapsed = !isFlightFormCollapsed;
+            renderFlightFormCollapseState();
+        }
+        function shortDateLabel(isoDate) {
+            if (!isoDate) return '';
+            const [, m, d] = isoDate.split('-');
+            return `${parseInt(m, 10)}/${parseInt(d, 10)}`;
+        }
+        function renderFlightFormCollapseState() {
+            const body = document.getElementById('flight-form-body');
+            const summary = document.getElementById('flight-form-summary');
+            const icon = document.getElementById('flight-form-toggle-icon');
+            if (!body || !summary || !icon) return;
+            if (isFlightFormCollapsed) {
+                body.classList.add('hidden');
+                icon.textContent = '▸';
+                const parts = [];
+                if (currentArrivalFlight) parts.push(`去程 ${escapeHtml(currentArrivalFlight.number)}・${shortDateLabel(currentArrivalQueryDate)} 抵達`);
+                if (currentDepartureFlight) parts.push(`回程 ${escapeHtml(currentDepartureFlight.number)}・${shortDateLabel(currentDepartureQueryDate)} 起飛`);
+                summary.innerHTML = parts.length > 0
+                    ? `✈️ 已同步航班資訊 — ${parts.join('　·　')}`
+                    : '✈️ 尚未查詢航班資訊，點右上角展開輸入';
+                summary.classList.remove('hidden');
+            } else {
+                body.classList.remove('hidden');
+                icon.textContent = '▾';
+                summary.classList.add('hidden');
+            }
+        }
+
         async function lookupFlight() {
             const flightNo = document.getElementById('flight-number-input').value.trim();
             const flightDate = document.getElementById('flight-date-input').value;
@@ -1026,6 +1073,7 @@
                         currentArrivalQueryDate = flightDate;
                         updateFlightDateConstraints();
                         saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
+                        renderFlightFormCollapseState(); // 若已經收合，讓摘要行即時反映最新查到的航班
 
                         // 機位配置圖連結只在「我的行程」時間軸卡片顯示（那裡有機型資訊可以對照），
                         // 這裡的查詢狀態訊息不重複放連結，避免使用者不知道機型就點進去
@@ -1054,6 +1102,7 @@
                         currentDepartureQueryDate = flightDate;
                         updateFlightDateConstraints();
                         saveFlightInfo(); // 存起來，避免重新整理後這班機資訊消失
+                        renderFlightFormCollapseState(); // 若已經收合，讓摘要行即時反映最新查到的航班
 
                         statusEl.textContent = `✅ 已查到回程 ${currentDepartureFlight.number}，${airport} 起飛：${time}（將加到行程結尾）`;
                         statusEl.className = 'text-[11px] text-[#6b8f71] mt-2 font-medium';
@@ -1884,17 +1933,28 @@ ${list}
                 return;
             }
             const startY = window.scrollY;
+            let targetY = computeTargetY();
             const duration = 900;
             const startTime = performance.now();
-            // easeInOutQuint：前段慢慢醞釀、中段加速衝刺、尾段平穩落地，比預設的 ease-in-out 更有起伏感
-            const ease = t => t < 0.5 ? 16 * t ** 5 : 1 - Math.pow(-2 * t + 2, 5) / 2;
+            // easeOutCubic：一開始就往前衝、後段平滑減速落地，起步比 easeInOutQuint 那種前段慢慢醞釀
+            // 更有反應感——使用者實測回報捲動「有點不順」，這種前段幾乎不動的醞釀感在短距離捲動時
+            // 特別容易感覺卡頓／遲鈍，換成一開始就有動靜的曲線比較符合「按了立刻有反應」的直覺
+            const ease = t => 1 - Math.pow(1 - t, 3);
             // 🔒 目標元素若剛從隱藏切換成可見（例如切頁籤時），本身可能還在播放「進場往上浮動」的 CSS 動畫
-            // （transform 位移，見 .reveal／.reveal-hero），量到的位置在動畫播完之前一直在變動；原本只在
-            // 捲動開始前算一次終點，捲完時目標經常還沒播完自己的進場動畫、真正落點跟算好的終點對不上。
-            // 改成每一影格都重新量測終點，捲動全程持續校正，不管目標是不是還在自己的動畫裡都能精準落地。
+            // （transform 位移，見 .reveal／.reveal-hero），量到的位置在動畫播完之前會變動。但每一影格都
+            // 呼叫 getBoundingClientRect() 重新量測會強制觸發瀏覽器同步重排（layout thrashing）——
+            // 900ms 的動畫在 60fps 下等於強制重排快 60 次，這是使用者感覺到的「不順」的另一個成因。
+            // 改成只在動畫開始後 150ms（進場動畫這時通常已經播完大半、位置趨於穩定）重新量測校正「一次」，
+            // 之後全程用這個校正過的終點，兼顧「目標還在動也能精準落地」跟「捲動過程不因為重排而頓」。
+            let hasRecalibrated = false;
             function step(now) {
-                const progress = Math.min((now - startTime) / duration, 1);
-                const distance = computeTargetY() - startY;
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                if (!hasRecalibrated && elapsed > 150) {
+                    targetY = computeTargetY();
+                    hasRecalibrated = true;
+                }
+                const distance = targetY - startY;
                 window.scrollTo(0, startY + distance * ease(progress));
                 if (progress < 1) requestAnimationFrame(step);
             }
@@ -3560,25 +3620,22 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                     </div>
                     <!-- 🖐️ 手機無法用原生拖曳排序（HTML5 drag-and-drop 觸控裝置大多不支援），
                          這排按鈕才是手機使用者實際會用到的排序方式，特意放大到接近 44px 的觸控友善尺寸。
-                         用分隔線把「同天排序」（↑↓）跟「換天」（◀▶）視覺分成兩群，並各自標上極小字說明，
-                         避免使用者搞不清楚四顆長得一樣的方向鈕功能其實不同 -->
+                         🔒 使用者實測回報：原本用分隔線＋文字說明把四顆按鈕拆成兩群、「移出」又用 ml-auto
+                         推到最右邊，四種功能造型/間距各自不同，視覺落差太大。改成五顆按鈕統一造型跟尺寸
+                         （同樣 rounded-lg、同樣高度、同樣 padding），依序排在同一排、間距一致，改用顏色
+                         深淺區分語意：同天排序（↑↓）中性米灰、換天（◀▶）淺珊瑚色、移出待排清單淺藍灰色，
+                         三種顏色互相都有明顯區隔，不會混淆；拿掉文字說明，靠 title 屬性 hover/長按提示 -->
                     <div class="flex items-center gap-2 mt-3 pt-3 border-t border-[#f5ecd9] flex-wrap">
-                        <div class="flex flex-col items-center gap-1">
-                            <div class="flex items-center gap-1">
-                                <button onclick="moveItemWithinDay('${item.id}', -1)" ${idx === 0 ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${idx === 0 ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="往上移">↑</button>
-                                <button onclick="moveItemWithinDay('${item.id}', 1)" ${idx === total - 1 ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${idx === total - 1 ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="往下移">↓</button>
-                            </div>
-                            <span class="text-[11px] text-slate-400 font-medium">同天排序</span>
-                        </div>
-                        <span class="w-px h-8 bg-[#d8cba8] shrink-0"></span>
-                        <div class="flex flex-col items-center gap-1">
-                            <div class="flex items-center gap-1">
-                                <button onclick="moveItemDay('${item.id}', -1)" ${dayIndex <= 1 ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${dayIndex <= 1 ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="移到前一天">◀</button>
-                                <button onclick="moveItemDay('${item.id}', 1)" ${dayIndex >= dayCount ? 'disabled' : ''} class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border ${dayIndex >= dayCount ? 'text-[#d8cba8] border-[#e8dcc8]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}" title="移到後一天">▶</button>
-                            </div>
-                            <span class="text-[11px] text-slate-400 font-medium">換天</span>
-                        </div>
-                        <button onclick="moveItemDay('${item.id}', ${-dayIndex})" class="ml-auto h-9 px-3 text-xs font-bold rounded-lg border border-[#d8cba8] bg-[#f5ecd9] text-slate-600 hover:bg-[#e8dcc8] active:bg-[#d8cba8]" title="移出這一天，退回未分配區">移出</button>
+                        <button onclick="moveItemWithinDay('${item.id}', -1)" ${idx === 0 ? 'disabled' : ''} title="同天內往前移"
+                            class="h-9 min-w-[2.75rem] px-3 text-sm font-bold rounded-lg border transition ${idx === 0 ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}">↑</button>
+                        <button onclick="moveItemWithinDay('${item.id}', 1)" ${idx === total - 1 ? 'disabled' : ''} title="同天內往後移"
+                            class="h-9 min-w-[2.75rem] px-3 text-sm font-bold rounded-lg border transition ${idx === total - 1 ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}">↓</button>
+                        <button onclick="moveItemDay('${item.id}', -1)" ${dayIndex <= 1 ? 'disabled' : ''} title="移到前一天"
+                            class="h-9 min-w-[2.75rem] px-3 text-sm font-bold rounded-lg border transition ${dayIndex <= 1 ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-[#a8695c] border-[#e8c9c2] bg-[#f6e9e6] hover:bg-[#f0dcd6] active:bg-[#e8c9c2]'}">◀</button>
+                        <button onclick="moveItemDay('${item.id}', 1)" ${dayIndex >= dayCount ? 'disabled' : ''} title="移到後一天"
+                            class="h-9 min-w-[2.75rem] px-3 text-sm font-bold rounded-lg border transition ${dayIndex >= dayCount ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-[#a8695c] border-[#e8c9c2] bg-[#f6e9e6] hover:bg-[#f0dcd6] active:bg-[#e8c9c2]'}">▶</button>
+                        <button onclick="moveItemDay('${item.id}', ${-dayIndex})" title="移出這一天，退回未分配區"
+                            class="h-9 px-3 text-sm font-bold rounded-lg border transition text-[#5c7a8a] border-[#c3d3d9] bg-[#eaf1f4] hover:bg-[#dde7ea] active:bg-[#c3d3d9]">移出</button>
                     </div>
                 </div>
             `;
@@ -3717,20 +3774,35 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                 `;
             }
 
+            // 🎨 使用者要求：每個 Day 區塊套用不同但都很淡的背景色＋對應色調邊框，長行程往下滑動時
+            // 能快速用背景色差異定位「現在在第幾天」。4 色一組循環（天數超過 4 天就重複使用），
+            // 色調都控制在極淡、跟整體暖色系主題協調，不會太搶眼蓋過卡片本身的視覺重點
+            const DAY_COLOR_THEMES = [
+                { bg: '#fbf3d9', border: '#e9d9a0' }, // Day 1・淺米黃
+                { bg: '#e9f3ea', border: '#c8ddc9' }, // Day 2・淺薄荷綠
+                { bg: '#eaf1f4', border: '#c9dce2' }, // Day 3・淺霧藍
+                { bg: '#f4eef2', border: '#ddc9d6' }  // Day 4・淺粉紫（超過 4 天從這裡循環回 Day 1 的顏色）
+            ];
+
             // 📅 依天數渲染每一天的排程區塊
             for (let d = 1; d <= dayCount; d++) {
+                const dayTheme = DAY_COLOR_THEMES[(d - 1) % DAY_COLOR_THEMES.length];
                 const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
                 const dayDate = getDateForDayIndex(d);
                 const dayLabel = dayDate ? `Day ${d}・${formatDateLabel(dayDate)}` : `Day ${d}`;
                 // 🌤️ 這天若查得到天氣預報就顯示小徽章；查不到（旅遊日期太遠、還沒查航班）就靜默不顯示
+                // 🔒 使用者實測回報：天氣/日落這兩個純參考資訊，原本用粗體＋飽和色（深藍/橘）呈現，
+                // 視覺權重跟旁邊「可以點擊調整」的出發時間輸入框太接近，容易誤以為天氣/日落也能點。
+                // 改成統一的淡色小徽章樣式（文字更小、非粗體、背景極淺、圓角改成 pill），跟有邊框、
+                // 粗體數字的出發時間輸入框明確區隔出「這是唯讀參考資訊」的視覺語言
                 const dayWeather = dayDate ? weatherByDate[formatDateISO(dayDate)] : null;
                 const weatherBadge = dayWeather
-                    ? `<span class="text-[11px] font-bold text-[#37505f] bg-[#eef3f5] px-2 py-1 rounded-lg flex items-center gap-1">${weatherIcon(dayWeather.code)} ${dayWeather.max}°/${dayWeather.min}°C</span>`
+                    ? `<span class="text-[10px] font-medium text-slate-500 bg-[#f5ecd9]/70 px-2 py-0.5 rounded-full flex items-center gap-1">${weatherIcon(dayWeather.code)} ${dayWeather.max}°/${dayWeather.min}°C</span>`
                     : '';
                 // 🌇 日落時間查得到才顯示，方便安排夜景/展望台這類黃昏後才精彩的景點
                 const daySunset = dayDate ? sunsetByDate[formatDateISO(dayDate)] : null;
                 const sunsetBadge = daySunset
-                    ? `<span class="text-[11px] font-bold text-orange-700 bg-orange-50 px-2 py-1 rounded-lg flex items-center gap-1">🌇 日落 ${formatSunsetJST(daySunset)}</span>`
+                    ? `<span class="text-[10px] font-medium text-slate-500 bg-[#f5ecd9]/70 px-2 py-0.5 rounded-full flex items-center gap-1">🌇 日落 ${formatSunsetJST(daySunset)}</span>`
                     : '';
                 // ☔ 這天是否有雨：給下面每張景點卡片判斷要不要顯示「雨天備案」標記
                 const dayIsRainy = dayWeather ? isRainyWeatherCode(dayWeather.code) : false;
@@ -3749,7 +3821,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                 ` : '';
 
                 timelineHTML += `
-                    <div>
+                    <div class="rounded-2xl border p-4" style="background-color:${dayTheme.bg}; border-color:${dayTheme.border};">
                         <!-- 🔒 使用者實測回報：這排資訊「有時候」會斷行到第二行、有時候不會，看起來像跑版——
                              根本原因是原本 5 個項目（Day 圓形編號／日期標籤／出發時間／天氣／日落）全部塞在
                              同一個 flex-wrap 容器裡，斷不斷行取決於「日期文字剛好幾個字」這種微小的像素寬度差異
