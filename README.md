@@ -112,6 +112,13 @@
 
 > 本專案未使用 Git 做版本控制，以下紀錄依開發討論過程整理，日期為主要功能定案的大致時間。
 
+### v5.24（2026-08-27）— 金鑰改用獨立 config.js，設定 GitHub Pages 自動部署
+
+- 背景：v5.23 換完新金鑰後嘗試 push，被 **GitHub Push Protection** 直接擋下——GitHub 掃描到程式碼歷史裡有金鑰格式的字串就會擋，不管新舊都一樣，證實「金鑰留在程式碼裡、只是換新的」這個做法在公開 repo 行不通
+- 三組金鑰改放進獨立的 `config.js`（**不進 Git**，加進 `.gitignore`），主檔案改用 `<script src="config.js">` 載入；新增 `config.example.js` 當作範本（值是佔位文字，可以安全進 Git），裡面附上三個申請金鑰的官方連結
+- 新增 `.github/workflows/deploy.yml`：push 到 master 時自動觸發，從 GitHub repo 的 Secrets（`GEMINI_API_KEY`／`OPENROUTER_API_KEY`／`AERODATABOX_KEY`）產生部署用的 `config.js`，把 `v5_travel_app_base_2.html` 改名成 `index.html`、部署到 GitHub Pages——之後每次 push 都會自動重新部署，不需要手動操作
+- 用真實瀏覽器＋真實 Gemini API 呼叫驗證過拆檔後架構正常運作：`config.js` 正確載入、三個金鑰常數在主程式作用域裡可以直接取用（沒有改動任何一處呼叫金鑰的程式碼，只搬了宣告的位置）
+
 ### v5.23（2026-08-27）— push 到 GitHub 前的準備：新增每日次數上限、換新金鑰、清理 repo
 
 - 背景：決定要把 repo push 上 GitHub、部署一個公開網址給全班使用，重新檢視了金鑰／額度風險——之前只有聊天問答有做「每個瀏覽器每天上限 5 次」防呆，AI 語意搜尋、AI 開場白、航班查詢完全沒有，全班一起用最先被榨乾的很可能是這幾個功能

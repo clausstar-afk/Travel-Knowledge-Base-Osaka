@@ -1,0 +1,51 @@
+name: 部署到 GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 取得原始碼
+        uses: actions/checkout@v4
+
+      - name: 用 Secrets 產生 config.js（不進 Git，只在部署當下組出來）
+        run: |
+          cat > config.js << 'EOF'
+          const GEMINI_API_KEY = '${{ secrets.GEMINI_API_KEY }}';
+          const OPENROUTER_API_KEY = '${{ secrets.OPENROUTER_API_KEY }}';
+          const AERODATABOX_KEY = '${{ secrets.AERODATABOX_KEY }}';
+          EOF
+
+      - name: 準備部署用的靜態網站資料夾（主檔案改名成 index.html，才會是網站首頁）
+        run: |
+          mkdir -p dist
+          cp v5_travel_app_base_2.html dist/index.html
+          cp config.js dist/config.js
+
+      - name: 設定 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上傳部署用的靜態檔案
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

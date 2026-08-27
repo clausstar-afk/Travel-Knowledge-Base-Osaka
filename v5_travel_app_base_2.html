@@ -413,6 +413,12 @@
         </div>
     </div>
 
+    <!-- 🔒 三組 API 金鑰獨立放在 config.js（不進 Git，見 .gitignore／config.example.js）——
+         本機開發時複製 config.example.js 改名成 config.js 並填入自己的金鑰；部署到 GitHub Pages
+         時這個檔案由 GitHub Actions 用 repo 的 Secrets 自動產生，兩邊都不會讓金鑰出現在 Git 歷史裡。
+         這個 <script> 標籤一定要放在下面主程式的 <script> 之前，讓金鑰常數先宣告好。 -->
+    <script src="config.js"></script>
+
     <!-- 邏輯腳本 JS -->
     <script>
         // CSV Google Sheet 發布網址
@@ -511,18 +517,16 @@
         // 🌇 日落時間（sunrise-sunset.org，免金鑰、免費），確定去程日期後自動查詢
         let sunsetByDate = {};         // { 'YYYY-MM-DD': 'ISO UTC 時間字串' }
 
-        // ⚠️ 重要提醒：這是純前端網頁，API Key 寫在這裡任何人按「檢查」都看得到，跟AERODATABOX_KEY一樣的風險。
-        // Google AI Studio的免費額度也有限（依模型而定，通常每分鐘/每日有請求數上限），
-        // 正式環境建議做一個小型後端來藏Key，demo階段可接受風險，但記得別把Key外流。
-        const GEMINI_API_KEY = 'AQ.Ab8RN6Ik8qTwsmlmtyRek1f6I_EJUumqLW6Ya_aotik8_aJ7eQ';
+        // 🔒 GEMINI_API_KEY 這個常數從 config.js 載入（見檔案開頭的 <script src="config.js">），
+        // 這裡不重複宣告。免費額度依模型而定，通常每分鐘/每日有請求數上限。
         // 模型名稱請以你自己Google AI Studio後台實際顯示的可用模型為準，這裡先用一個常見的輕量模型示範
         const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 
         // 🍄 Kinopio 聊天問答功能：主要打 Gemini（跟上面 AI 搜尋／行程介紹共用同一組 Key），
-        // 失敗才降級打 OpenRouter 的免費模型（Gemma 4 26B A4B → 31B），跟上面兩組 Key 同樣的風險/做法。
+        // 失敗才降級打 OpenRouter 的免費模型（Gemma 4 26B A4B → 31B）。
+        // 🔒 OPENROUTER_API_KEY 同樣從 config.js 載入，這裡不重複宣告。
         // 這組 Key 已經在 OpenRouter 後台設定 Credit limit（花費上限），就算 Key 外流，最多損失也鎖死在那個金額內。
         // 免費模型額度是「整個帳號」共用（不是每個訪客各自一份），沒儲值過的話大約 50 次/天，超過會回傳 429。
-        const OPENROUTER_API_KEY = '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';
         // 三層備援：Gemini 額度池跟 OpenRouter 完全獨立，兩邊都出問題的機率低很多；
         // OpenRouter 這兩個免費模型退居第二／第三層，順序不變（26B A4B 較快，31B 當最後備援）
         const OPENROUTER_CHAT_MODEL_BACKUP1 = 'google/gemma-4-26b-a4b-it:free';
@@ -567,10 +571,8 @@
         const getFlightLookupDailyState = () => getDailyUsageState('travel_kb_flightlookup_daily');
         const incrementFlightLookupDailyCount = () => incrementDailyUsageCount('travel_kb_flightlookup_daily');
 
-        // ⚠️ 重要提醒：這是純前端網頁，API Key 寫在這裡任何人按「檢查」都看得到。
-        // 這對正式商業產品是大忌，但對免費額度僅600次/月的學生demo可接受風險。
-        // 記得換成你自己在 RapidAPI 重新產生的 Key，不要沿用之前對話裡曝光過的那組。
-        const AERODATABOX_KEY = '1930bbfca1mshb70f57d8533123ep16c4dcjsn8e5ae91131e7';
+        // 🔒 AERODATABOX_KEY 同樣從 config.js 載入，這裡不重複宣告。
+        // ⚠️ 免費額度僅約 600 次/月，這是純前端網頁沒有後端能藏金鑰，可接受風險見 README。
 
         // 🚦 AeroDataBox 免費方案速率限制是「每秒 1 次請求」，比月額度本身更容易踩到（尤其現在同時有
         // 航班查詢／自動完成／排班日期檢查三個功能都會打這組 API，動作快一點就可能兩次請求間隔不到 1 秒）。
