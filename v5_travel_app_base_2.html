@@ -147,9 +147,11 @@
         <div id="hero-section" class="mb-8 py-10 sm:py-14 text-center">
             <!-- 兩行刻意不置中：第一行用 padding-left、第二行用相同比例的 padding-right，
                  靠左/靠右的內縮距離完全對稱，形成一個輕微的錯位排版節奏，不是隨便偏一邊。 -->
+            <!-- 「心動」「行動」這兩個重點色的字放大 2 級（text-3xl→5xl、sm:text-5xl→7xl），比整行放大更精準凸顯，
+                 換行風險也比整句放大低。inline-block 讓放大的字不擠壓同一行其他字的基線對齊。 -->
             <h1 class="hand text-3xl sm:text-5xl font-black text-slate-800 leading-tight mb-4 max-w-lg sm:max-w-2xl mx-auto">
-                <span class="block text-left pl-[8%] sm:pl-[12%]">把<span class="text-[#2c5f7c]">心動</span>，</span>
-                <span class="block text-right pr-[8%] sm:pr-[12%]">排成<span class="text-[#2c5f7c]">行動</span>的每一天</span>
+                <span class="block text-left pl-[8%] sm:pl-[12%]">把<span class="inline-block text-5xl sm:text-7xl text-[#2c5f7c]">心動</span>，</span>
+                <span class="block text-right pr-[8%] sm:pr-[12%]">排成<span class="inline-block text-5xl sm:text-7xl text-[#2c5f7c]">行動</span>的每一天</span>
             </h1>
             <p class="text-sm text-slate-500 leading-loose max-w-md mx-auto mb-7">
                 景點資料庫、航班天氣查詢、AI 客製化建議、拖拉分天排程——從找景點到排好整趟行程，一站完成。
