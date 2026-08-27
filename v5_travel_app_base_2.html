@@ -3403,7 +3403,7 @@ ${factList}
                                     const connectorHTML = transitMin !== null ? `
                                         <div class="flex items-center gap-2 flex-wrap pl-1 text-[11px] text-slate-500 font-medium">
                                             <span class="text-[#5c7a8a]">⬇️</span>
-                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🚃 預估交通約 ${transitMin} 分鐘（${getMainAreaKey(item.area)} → ${getMainAreaKey(nextItem.area)}）</span>
+                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🚃 預估交通約 ${transitMin} 分鐘（${escapeHtml(getMainAreaKey(item.area))} → ${escapeHtml(getMainAreaKey(nextItem.area))}）</span>
                                             <a href="${getTransitDirectionsUrl(item, nextItem)}" target="_blank" rel="noopener noreferrer"
                                                class="inline-flex items-center gap-1 font-bold text-[#5c7a8a] bg-[#eef3f5] hover:bg-[#dde7ea] border border-[#c3d3d9] rounded-full px-2.5 py-1 transition">
                                                 🔍 查看交通方式<span class="text-slate-400 font-normal">↗</span>
