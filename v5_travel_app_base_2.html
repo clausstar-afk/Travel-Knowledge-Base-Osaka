@@ -1569,7 +1569,17 @@
             return dayEndTimes[d] || '22:00';
         }
 
+        // 🛡️ 使用者要求出發時間不能晚於（或等於）結束時間，反過來結束時間也不能早於（或等於）出發時間——
+        // 其實是同一條規則的兩個方向：出發一定要早於結束。跟 setDayStartTime() 一樣，不能只靠原生
+        // <input type="time"> 的 min/max 屬性防呆（部分瀏覽器手動打字/選時間不會被擋下來），
+        // 儲存前直接攔截修正，不給無效值存在的機會。
         function setDayEndTime(d, value) {
+            const startTime = getDayStartTime(d);
+            if (clockToMinutes(value) <= clockToMinutes(startTime)) {
+                showToast('結束時間不能早於或等於出發時間，請重新設定', false, '🛡️');
+                generateDynamicTimeline(); // 把輸入框還原成目前實際生效的值，不留下使用者剛打的無效值
+                return;
+            }
             dayEndTimes[d] = value;
             saveDayPlan();
             generateDynamicTimeline();
@@ -1605,6 +1615,13 @@
                     value = earliest;
                     showToast('出發時間不能早於航班抵達時間，已自動改回抵達時間', true, '🛡️');
                 }
+            }
+            // 🛡️ 出發時間不能晚於或等於結束時間（跟 setDayEndTime() 互相呼應的同一條規則）
+            const endTime = getDayEndTime(d);
+            if (clockToMinutes(value) >= clockToMinutes(endTime)) {
+                showToast('出發時間不能晚於或等於結束時間，請重新設定', false, '🛡️');
+                generateDynamicTimeline();
+                return;
             }
             dayStartTimes[d] = value;
             saveDayPlan();
@@ -2260,18 +2277,16 @@ ${list}
 
         // 依 getMainAreaKey(item.area) 分組成一排一排，順序沿用資料庫原始順序（本來就是市中心→近郊的地理動線，
         // 不用另外設計排序邏輯）；一個景點只會落在一個地區排（跟分類不同，地區欄位每個景點只有一個值）。
-        function renderAreaRows() {
+        function renderAreaRows(filtered) {
             const areasInOrder = [];
             const byArea = new Map();
-            // 分類 Chips 篩選在地區橫排一樣要生效：選了某個分類，只有符合的景點會出現，
-            // 整排都沒有符合分類的地區直接不渲染那一排。
-            attractionsData
-                .filter(item => currentCategory === 'ALL' || (item.category && item.category.includes(currentCategory)))
-                .forEach(item => {
-                    const key = getMainAreaKey(item.area);
-                    if (!byArea.has(key)) { byArea.set(key, []); areasInOrder.push(key); }
-                    byArea.get(key).push(item);
-                });
+            // 🔒 分類 Chips／關鍵字／Kinopio AI 搜尋都已經在 getFilteredAttractions() 篩選過，
+            // 這裡只需要照篩選結果分組；整排都沒有符合條件的地區直接不渲染那一排。
+            filtered.forEach(item => {
+                const key = getMainAreaKey(item.area);
+                if (!byArea.has(key)) { byArea.set(key, []); areasInOrder.push(key); }
+                byArea.get(key).push(item);
+            });
 
             const container = document.getElementById('area-rows');
             container.innerHTML = areasInOrder.map((area, i) => {
@@ -2350,23 +2365,29 @@ ${list}
             }
             if (timelineContainer) timelineContainer.classList.add('hidden');
 
-            // 📍 純瀏覽（沒打關鍵字、沒用 AI 搜尋）用地區橫向排；一旦開始搜尋，改回原本的格狀清單，
-            // 因為那個模式更適合「比對結果」。分類 Chips 兩種模式都要顯示，維持原本篩選功能不受影響。
-            const isBrowsing = !currentKeyword && aiSearchResultIds === null;
-            if (isBrowsing) {
-                grid.classList.add('hidden'); grid.innerHTML = ''; // 清空，避免跟地區橫排的 card-${id} 重複
-                emptyState.classList.add('hidden');
-                areaRows.classList.remove('hidden');
-                renderAreaRows();
+            // 🔒 使用者反映：關鍵字/Kinopio 搜尋篩選完，畫面會整個換成詳細層格狀清單，跟平常瀏覽的地區橫排
+            // 長得不一樣，體驗不連貫。改成篩選結果一律維持用「依地區分類」的瀏覽層卡片呈現，篩選只是縮小
+            // 每排出現的景點範圍，不再切換成另一種版面——格狀詳細清單（buildAttractionCardHTML／#attraction-grid）
+            // 保留給 openDetailModal() 的詳細層 Modal 用，這裡一律不顯示。
+            grid.classList.add('hidden'); grid.innerHTML = ''; // 清空，避免跟地區橫排的 card-${id} 重複
+
+            const filtered = getFilteredAttractions();
+            if (filtered.length === 0) {
+                areaRows.classList.add('hidden'); areaRows.innerHTML = '';
+                document.getElementById('area-quick-nav').classList.add('hidden');
+                document.getElementById('area-quick-nav').innerHTML = '';
+                emptyState.classList.remove('hidden');
                 return;
             }
-            areaRows.classList.add('hidden'); areaRows.innerHTML = ''; // 清空，避免跟格狀清單的 card-${id} 重複
-            // 📍 搜尋/AI搜尋模式改回格狀清單，沒有地區分組，地區快速跳轉 Chips 一併隱藏清空
-            document.getElementById('area-quick-nav').classList.add('hidden');
-            document.getElementById('area-quick-nav').innerHTML = '';
+            emptyState.classList.add('hidden');
+            areaRows.classList.remove('hidden');
+            renderAreaRows(filtered);
+        }
 
-            // 篩選過濾邏輯（只在「所有景點」頁籤使用）
-            let filtered = attractionsData.filter(item => {
+        // 依「分類 Chips ＋ 關鍵字／Kinopio AI 搜尋」算出目前應該顯示的景點清單，
+        // renderCards() 跟 renderAreaRows() 共用同一份邏輯，確保瀏覽層卡片跟篩選條件永遠對得上
+        function getFilteredAttractions() {
+            const filtered = attractionsData.filter(item => {
                 // 分類過濾（AI 搜尋模式下依然有效，可以再用分類 Chips 進一步縮小範圍）
                 const matchCat = currentCategory === 'ALL' || (item.category && item.category.includes(currentCategory));
                 // ✨ AI 自然語言搜尋模式：只看 AI 回傳的景點 id 清單，不用關鍵字比對
@@ -2384,16 +2405,7 @@ ${list}
             if (aiSearchResultIds !== null) {
                 filtered.sort((a, b) => aiSearchResultIds.indexOf(a.id) - aiSearchResultIds.indexOf(b.id));
             }
-
-            if (filtered.length === 0) {
-                grid.classList.add('hidden');
-                emptyState.classList.remove('hidden');
-                return;
-            }
-            emptyState.classList.add('hidden');
-            grid.classList.remove('hidden');
-
-            grid.innerHTML = filtered.map(buildAttractionCardHTML).join('');
+            return filtered;
         }
 
         // 🎬 瀏覽層卡片（Netflix 海報牆風格）：地區橫排原本直接用下面的完整卡片，一張 400+px 高，
@@ -2410,8 +2422,10 @@ ${list}
             // 🔒 使用者反映瀏覽層卡片看不出來哪些景點已加入行程，跟詳細層卡片一樣套用綠框樣式
             // （border-solid + 苔綠色 + ring），toggleItinerary() 加入/移除時會同步更新這裡的邊框
             const isSelected = myItineraryIds.has(item.id);
+            // 🔒 使用者反映綠框效果不夠明顯，加粗 ring（2px→4px）、換成飽和度較高的綠色，
+            // 再疊一層綠色 box-shadow 光暈（呼應使用者說的「綠光」），靜態畫面就能一眼看出已加入
             const browseBorderClass = isSelected
-                ? 'border-solid border-[#6b8f71] ring-2 ring-[#dbe7d3] shadow-lg'
+                ? 'border-solid border-[#5a8c60] ring-4 ring-[#9ecba3] shadow-[0_0_14px_rgba(90,140,96,0.55)]'
                 : 'border-[#e8dcc8] shadow-sm';
             return `
                 <button type="button" id="browse-card-${item.id}" onclick="openDetailModal('${item.id}')"
@@ -2619,7 +2633,7 @@ ${list}
                     card.classList.add('border-dashed', 'border-[#c9a876]', 'shadow-md');
                 }
                 if (browseCard) {
-                    browseCard.classList.remove('border-solid', 'border-[#6b8f71]', 'ring-2', 'ring-[#dbe7d3]', 'shadow-lg');
+                    browseCard.classList.remove('border-solid', 'border-[#5a8c60]', 'ring-4', 'ring-[#9ecba3]', 'shadow-[0_0_14px_rgba(90,140,96,0.55)]');
                     browseCard.classList.add('border-[#e8dcc8]', 'shadow-sm');
                 }
                 if (btn) {
@@ -2642,7 +2656,7 @@ ${list}
                 }
                 if (browseCard) {
                     browseCard.classList.remove('border-[#e8dcc8]', 'shadow-sm');
-                    browseCard.classList.add('border-solid', 'border-[#6b8f71]', 'ring-2', 'ring-[#dbe7d3]', 'shadow-lg');
+                    browseCard.classList.add('border-solid', 'border-[#5a8c60]', 'ring-4', 'ring-[#9ecba3]', 'shadow-[0_0_14px_rgba(90,140,96,0.55)]');
                 }
                 if (btn) {
                     btn.classList.remove('bg-[#2c5f7c]', 'hover:bg-[#234c66]', 'active:bg-[#1a3a4a]', 'shadow-[#d3e3e9]');
