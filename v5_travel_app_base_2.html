@@ -1212,7 +1212,23 @@
             // 還原成單純文字，避免舊的 flex 佈局干擾這次的副標寬度量測
             titleEl.removeAttribute('style');
             titleEl.textContent = originalText;
-            const targetWidth = subtitleEl.getBoundingClientRect().width;
+
+            // 🔒 使用者實測回報：容器寬度（getBoundingClientRect）兩邊明明量到一樣寬，畫面上卻還是覺得
+            // 「尾巴沒對齊」——直接在真實部署站台上量過才抓到真正原因：中英文字元「視覺墨跡」跟「排版
+            // 容器邊界」不是同一回事。中文字滿版填滿自己的字身框，最後一個字的墨跡右緣＝容器右緣；
+            // 但英文字型的最後一個字母（尤其像 i 這種窄字）右側通常留有內建的字元間距 buffer，墨跡右緣
+            // 其實比容器右緣還要靠左一截（實測差了將近 10px）——容器數字對齊了，視覺上卻沒對齊。
+            // 改用 Range API 直接量測副標題文字的「視覺墨跡邊界」，而不是整個 <p> 容器的邊界，
+            // 讓中文標題撐開的寬度是對準英文字母的真實視覺邊緣，不是對準容器名義上的邊界。
+            let targetWidth = subtitleEl.getBoundingClientRect().width;
+            const subtitleTextNode = subtitleEl.firstChild;
+            if (subtitleTextNode && subtitleTextNode.nodeType === Node.TEXT_NODE && subtitleTextNode.length > 0) {
+                const range = document.createRange();
+                range.setStart(subtitleTextNode, 0);
+                range.setEnd(subtitleTextNode, subtitleTextNode.length);
+                const inkRect = range.getBoundingClientRect();
+                targetWidth = inkRect.right - subtitleEl.getBoundingClientRect().left;
+            }
 
             // ⚠️ 這裡原本有一個「標題自然寬度 ≥ 副標寬度就整個跳過對齊」的防呆，結果太保守——
             // 中文粗體字在多數字型下，量出來的自然寬度本來就很容易剛好跟英文副標差不多寬，
