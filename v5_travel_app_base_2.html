@@ -729,6 +729,9 @@
         let dayEndTimes = {};          // { 1: '22:00', ... } 每天願意玩到幾點，使用者可自行調整，用來算「排入天數」下拉選單裡的剩餘空檔
         let stayOverrides = {};        // { itemId: 分鐘數 } 使用者手動調整過的個別景點停留時間，沒被調整過的景點不會出現在這裡（維持用 item.stay 建議值）
         const expandedStayEditIds = new Set(); // 目前正在展開停留時間調整介面的景點 id（純畫面狀態，不儲存、不跨帳號保留）
+        let itemNotes = {};            // { itemId: '筆記文字' } 使用者針對個別景點卡片寫的自訂筆記，沒寫過的景點不會出現在這裡
+        const expandedNoteEditIds = new Set(); // 目前正在展開筆記編輯介面的景點 id（純畫面狀態，不儲存、不跨帳號保留）
+        const expandedCardMenuIds = new Set(); // 目前展開「⋯」操作選單的景點 id（純畫面狀態，不儲存、不跨帳號保留）
         // 🔒 使用者要求：每天標題旁新增收合/展開按鈕，視覺跟航班表單的收合按鈕一致（.collapse-toggle-btn）。
         // 純畫面狀態，不存 LocalStorage，用 Set 記錄目前收合的天數（存天數編號，不是景點 id）
         const collapsedDayIndices = new Set();
@@ -1400,8 +1403,10 @@
 
         // 讀取 LocalStorage 保留的「分天 + 拖拉排序」計畫
         function loadDayPlan() {
-            dayCount = 1; dayPlan = [[]]; unassignedIds = []; dayStartTimes = {}; dayEndTimes = {}; stayOverrides = {}; manualStartDate = null;
+            dayCount = 1; dayPlan = [[]]; unassignedIds = []; dayStartTimes = {}; dayEndTimes = {}; stayOverrides = {}; itemNotes = {}; manualStartDate = null;
             expandedStayEditIds.clear();
+            expandedNoteEditIds.clear();
+            expandedCardMenuIds.clear();
             try {
                 let saved = localStorage.getItem(scopedKey('travel_kb_dayplan'));
                 if (saved === null && getStorageScope() === 'guest') {
@@ -1415,6 +1420,7 @@
                     dayStartTimes = parsed.dayStartTimes && typeof parsed.dayStartTimes === 'object' ? parsed.dayStartTimes : {};
                     dayEndTimes = parsed.dayEndTimes && typeof parsed.dayEndTimes === 'object' ? parsed.dayEndTimes : {};
                     stayOverrides = parsed.stayOverrides && typeof parsed.stayOverrides === 'object' ? parsed.stayOverrides : {};
+                    itemNotes = parsed.itemNotes && typeof parsed.itemNotes === 'object' ? parsed.itemNotes : {};
                     manualStartDate = parsed.manualStartDate || null;
                 }
             } catch (e) {
@@ -1425,7 +1431,7 @@
         // 儲存「分天 + 拖拉排序」計畫至 LocalStorage（存進目前登入帳號自己的範圍）
         function saveDayPlan() {
             try {
-                localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes, dayEndTimes, stayOverrides, manualStartDate }));
+                localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes, dayEndTimes, stayOverrides, itemNotes, manualStartDate }));
             } catch (e) {
                 console.error("LocalStorage save error (dayplan):", e);
             }
@@ -1552,6 +1558,10 @@
             // 景點被移出行程後，殘留的停留時間手動調整也一併清掉，不要一直留著沒人會再用到的資料
             Object.keys(stayOverrides).forEach(id => {
                 if (!myItineraryIds.has(id) || !validIds.has(id)) delete stayOverrides[id];
+            });
+            // 景點被移出行程後，殘留的筆記也一併清掉，同上邏輯
+            Object.keys(itemNotes).forEach(id => {
+                if (!myItineraryIds.has(id) || !validIds.has(id)) delete itemNotes[id];
             });
         }
 
@@ -2301,9 +2311,14 @@ ${list}
             // 只扣 header 高度不夠，目標的上緣就會被 browse-section 蓋住。改成動態量測目前實際疊在最上面的
             // sticky 高度：捲到 browse-section 本身不用另外扣（它自己就是目標），捲到它之後的任何目標
             // （例如航班查詢的去程/回程選項）才需要疊加扣掉。
+            // 🔒 「我的行程」頁籤新增了第三層 sticky 的 Day 快速跳轉橫幅（#day-quick-nav），疊在
+            // header／browse-section 下面——捲到橫幅本身以外的任何目標（例如點橫幅上的 Day 按鈕捲到
+            // 對應的 day-block）都要一併扣掉它的高度，不然目標上緣一樣會被這層橫幅蓋住
+            const dayQuickNav = document.getElementById('day-quick-nav');
             const computeTargetY = () => {
                 const stickyOffset = (header ? header.getBoundingClientRect().height : 64)
                     + (browseSection && target !== browseSection ? browseSection.getBoundingClientRect().height : 0)
+                    + (dayQuickNav && target !== dayQuickNav ? dayQuickNav.getBoundingClientRect().height : 0)
                     + 8; // 多留一點呼吸空間，目標不要緊貼著 sticky 元素下緣
                 return target.getBoundingClientRect().top + window.scrollY - stickyOffset;
             };
@@ -3871,6 +3886,48 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             generateDynamicTimeline();
         }
 
+        // 展開／收合景點卡片右上角「⋯」操作選單（純畫面狀態，不需要存 LocalStorage）
+        // 一次只開一個選單，展開新的自動收掉其他還開著的，避免畫面同時疊好幾個選單
+        function toggleCardMenu(itemId) {
+            const wasOpen = expandedCardMenuIds.has(itemId);
+            expandedCardMenuIds.clear();
+            if (!wasOpen) expandedCardMenuIds.add(itemId);
+            generateDynamicTimeline();
+        }
+
+        // 從「⋯」選單點「新增／編輯筆記」：收起選單，直接展開筆記編輯框
+        function openNoteEditFromMenu(itemId) {
+            expandedCardMenuIds.delete(itemId);
+            expandedNoteEditIds.add(itemId);
+            generateDynamicTimeline();
+        }
+
+        // 展開／收合（取消）筆記編輯框
+        function toggleNoteEdit(itemId) {
+            if (expandedNoteEditIds.has(itemId)) expandedNoteEditIds.delete(itemId);
+            else expandedNoteEditIds.add(itemId);
+            generateDynamicTimeline();
+        }
+
+        // 儲存筆記；空白內容視同刪除筆記，不會留下空字串佔資料
+        function saveItemNote(itemId) {
+            const input = document.getElementById(`note-input-${itemId}`);
+            const text = input ? input.value.trim() : '';
+            if (text) itemNotes[itemId] = text;
+            else delete itemNotes[itemId];
+            expandedNoteEditIds.delete(itemId);
+            saveDayPlan();
+            generateDynamicTimeline();
+        }
+
+        // 刪除已存在的筆記
+        function deleteItemNote(itemId) {
+            delete itemNotes[itemId];
+            expandedNoteEditIds.delete(itemId);
+            saveDayPlan();
+            generateDynamicTimeline();
+        }
+
         // 渲染「未分配」區的小卡片：排入某一天一律透過下拉選單（見下方大註解）
         function renderUnassignedChip(item) {
             // 🔒 使用者要求：選項依地緣相關度排序（不隱藏），並附上每天的剩餘空檔，方便判斷排哪天
@@ -4007,6 +4064,24 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                 ? `<p class="text-[11px] text-[#9678a5] bg-[#f2eef4] rounded-lg px-2.5 py-1.5">💡 這裡${effectiveStayMin > baseStayMin ? '多留了' : '少留了'} ${formatMinutesToDuration(Math.abs(effectiveStayMin - baseStayMin))}（原建議 ${safeStay}），後面景點的時段會自動順延調整</p>`
                 : '';
 
+            // 📝 自訂筆記：沒編輯中且有內容時顯示收合摘要；編輯中顯示文字框＋儲存/取消（有內容時再多一顆刪除筆記）
+            const hasNote = Object.prototype.hasOwnProperty.call(itemNotes, item.id) && itemNotes[item.id];
+            const isNoteEditing = expandedNoteEditIds.has(item.id);
+            const noteBlock = isNoteEditing
+                ? `<div class="bg-[#f2eef4] border border-[#e3dae8] rounded-lg p-2.5">
+                        <textarea id="note-input-${item.id}" rows="2" placeholder="輸入筆記，例如：記得先線上訂位..."
+                            class="w-full text-xs bg-[#faf6ee] border border-[#d8cba8] rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#9678a5] resize-none">${escapeHtml(itemNotes[item.id] || '')}</textarea>
+                        <div class="flex items-center gap-2 mt-1.5">
+                            <button onclick="saveItemNote('${item.id}')" class="px-2.5 py-1 text-[11px] font-bold text-white bg-[#9678a5] hover:bg-[#8a699a] rounded-lg transition">儲存</button>
+                            <button onclick="toggleNoteEdit('${item.id}')" class="px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-700 transition">取消</button>
+                            ${hasNote ? `<button onclick="deleteItemNote('${item.id}')" class="ml-auto px-2.5 py-1 text-[11px] font-bold text-[#a8362b] hover:underline">刪除筆記</button>` : ''}
+                        </div>
+                   </div>`
+                : (hasNote ? `<div class="bg-[#f2eef4] border border-[#e3dae8] rounded-lg px-2.5 py-1.5">
+                        <div class="text-[10px] font-bold text-[#9678a5] mb-0.5">📝 筆記</div>
+                        <p class="text-xs text-[#564865] leading-relaxed whitespace-pre-wrap">${escapeHtml(itemNotes[item.id])}</p>
+                   </div>` : '');
+
             // 📏 時段徽章＋補充資訊放同一行，用「・」接時段、「|」分隔各項補充資訊——
             // 每一項資訊都看得出各自的邊界，不會黏成一整串分不清楚的文字
             // 🔒 手機實測發現的排版 bug：原本整段是一串 inline span 塞進同一個 flex-wrap 容器，
@@ -4046,13 +4121,22 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                                 <span>${categoryIcon}</span>${safeName}
                             </h4>
                         </div>
-                        <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-[#c46b5c] hover:bg-[#f6e9e6] hover:text-[#b04938] transition">🗑</button>
+                        <div class="relative shrink-0">
+                            <button onclick="toggleCardMenu('${item.id}')" title="更多操作" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] transition">⋯</button>
+                            ${expandedCardMenuIds.has(item.id) ? `
+                                <div class="absolute top-9 right-0 z-20 w-48 bg-[#faf6ee] border border-[#d8cba8] rounded-xl shadow-lg overflow-hidden">
+                                    <button onclick="openNoteEditFromMenu('${item.id}')" class="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-[#f5ecd9] transition border-b border-[#f0e8d5]">📝 新增／編輯筆記</button>
+                                    <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="w-full text-left px-3 py-2.5 text-xs font-bold text-[#b04938] hover:bg-[#f6e9e6] transition">🗑 從行程中刪除</button>
+                                </div>
+                            ` : ''}
+                        </div>
                     </div>
                     <!-- 📐 這一整塊統一用 flex-col gap-3，每個區塊間距都精準是 12px（實測驗證過），
                          不會像各自設 margin/padding 那樣疊加算錯、忽大忽小 -->
                     <div class="flex flex-col gap-3 mt-3">
                         <p class="text-xs text-slate-500 flex items-center flex-wrap">${metaLine}</p>
                         ${stayOverrideNote}
+                        ${noteBlock}
                         <!-- 🔒 使用者要求：注意事項橫幅跟門票/營業時間橫幅上下交換，避免注意事項打斷資訊
                              呈現節奏（先看到事實資訊，警示放後面）；兩個橫幅內部各自的排版都不更動，只調換順序 -->
                         <div class="flex items-center gap-3 pt-3 border-t border-[#f5ecd9]">
@@ -4191,6 +4275,21 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                         </div>
                     </div>
             `;
+
+            // 🗓️ Day 快速跳轉橫幅：參考 Funliday 等行程 App 的「凍結日期列」，天數 ≥ 2 才顯示（只有一天沒有
+            // 跳轉的意義）。凍結在 header／browse-section 兩層既有 sticky 元素下方，實際 top 位移量在
+            // 渲染完成後由 updateDayNavStickyOffset() 動態量測設定（見該函式註解），這裡先不寫死 top 值
+            if (dayCount > 1) {
+                timelineHTML += `
+                    <div id="day-quick-nav" class="sticky z-20 -mx-4 px-4 py-2 bg-[#faf6ee]/95 backdrop-blur-sm border-b border-[#e8dcc8] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                        ${Array.from({ length: dayCount }, (_, i) => i + 1).map(d => {
+                            const navDate = getDateForDayIndex(d);
+                            const navLabel = navDate ? `Day${d}・${formatDateLabel(navDate)}` : `Day${d}`;
+                            return `<button onclick="scrollToDayBlock(${d})" class="shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8] text-slate-600 whitespace-nowrap transition">${navLabel}</button>`;
+                        }).join('')}
+                    </div>
+                `;
+            }
 
             // 🔒 使用者要求：還沒查航班資訊時，也能自訂 Day 1 日期來規劃行程（定休日/天氣這些跟日期綁定的
             // 功能才有得用）。一旦查到航班資訊，日期一律以航班為準，這個手動輸入就不再顯示，避免兩個日期來源互相打架
@@ -4333,7 +4432,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                 ` : '';
 
                 timelineHTML += `
-                    <div class="rounded-2xl border p-4" style="background-color:${dayTheme.bg}; border-color:${dayTheme.border};">
+                    <div id="day-block-${d}" class="rounded-2xl border p-4" style="background-color:${dayTheme.bg}; border-color:${dayTheme.border};">
                         <!-- 🔒 使用者實測回報：這排資訊「有時候」會斷行到第二行、有時候不會，看起來像跑版——
                              根本原因是原本 5 個項目（Day 圓形編號／日期標籤／出發時間／天氣／日落）全部塞在
                              同一個 flex-wrap 容器裡，斷不斷行取決於「日期文字剛好幾個字」這種微小的像素寬度差異
@@ -4473,6 +4572,32 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
 
             timelineContainer.innerHTML = timelineHTML;
             restoreScrollPosition();
+            updateDayNavStickyOffset();
+        }
+
+        // 🗓️ 動態量測 Day 快速跳轉橫幅要凍結在哪個高度：跟 smoothScrollToId() 同樣的道理，header／
+        // browse-section 都是 sticky、疊在畫面最上方，橫幅要接在這兩層下面才不會被蓋住。用實際量測
+        // 而不是寫死數字，是因為這兩層在手機窄螢幕上可能換行、實際高度並不固定
+        function updateDayNavStickyOffset() {
+            const nav = document.getElementById('day-quick-nav');
+            if (!nav) return;
+            const headerEl = document.querySelector('header');
+            const browseSectionEl = document.getElementById('browse-section');
+            const offset = (headerEl ? headerEl.getBoundingClientRect().height : 64) + (browseSectionEl ? browseSectionEl.getBoundingClientRect().height : 0);
+            nav.style.top = offset + 'px';
+        }
+        window.addEventListener('resize', updateDayNavStickyOffset);
+
+        // 📅 點 Day 快速跳轉橫幅：捲動到該天開頭；若該天目前是收合狀態，先展開再捲動，
+        // 不然使用者捲過去只會看到收合的標題列、看不到內容，跳轉就沒有意義
+        function scrollToDayBlock(d) {
+            if (collapsedDayIndices.has(d)) {
+                collapsedDayIndices.delete(d);
+                generateDynamicTimeline();
+                requestAnimationFrame(() => smoothScrollToId(`day-block-${d}`));
+            } else {
+                smoothScrollToId(`day-block-${d}`);
+            }
         }
     </script>
 </body>
