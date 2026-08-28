@@ -1824,7 +1824,11 @@
         function getClosedWeekdays(item) {
             const text = `${item.hours || ''} ${item.hoursRemark || ''}`;
             if (text.includes('每個月') || /第.{1,2}個/.test(text)) return []; // 複雜規則跳過，避免誤判
-            const match = text.match(/週([日一二三四五六、\s]+)公休/);
+            // 🔒 大規模回歸測試發現：原本的字元類別沒有把「週」本身算進去，遇到「週二、週四公休」這種
+            // 每個公休日都各自重複帶「週」字的寫法時，正則會在第二個「週」字卡住重新開始比對，只抓得到
+            // 最後一段（週四），漏掉前面的（週二）。字元類別補上「週」，多個「週X」片段就能一次整段抓完，
+            // 抓到的「週」字元本身在下面 WEEKDAY_CHARS.indexOf() 找不到會回傳 -1，被 filter 自動濾掉，不影響結果
+            const match = text.match(/週([日一二三四五六週、\s]+)公休/);
             if (!match) return [];
             return [...match[1]].map(ch => WEEKDAY_CHARS.indexOf(ch)).filter(idx => idx !== -1);
         }
