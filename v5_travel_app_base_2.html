@@ -4157,7 +4157,10 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                     : '';
                 timelineHTML += `
                     <!-- 航班抵達卡片 -->
-                    <div class="bg-[#eef3f5] border border-[#dde7ea] rounded-2xl p-4">
+                    <!-- 🔒 使用者反映航班資訊卡跟 Day 卡片看起來太像（尤其 Day 3「淺霧藍」主題色 #eaf1f4
+                         跟航班卡片底色 #eef3f5 很接近），邊框加粗（1px→2px）＋顏色調深一階，
+                         讓航班卡片一眼就看得出是不同種類的卡片，不只是線變粗而已 -->
+                    <div class="bg-[#eef3f5] border-2 border-[#a8c5d1] rounded-2xl p-4">
                         <div class="text-xs font-bold text-[#37505f] mb-1">🛬 航班 ${escapeHtml(currentArrivalFlight.number)} 抵達</div>
                         <div class="text-base font-black text-[#1a3a4a]">${escapeHtml(currentArrivalFlight.airport)}｜${escapeHtml(currentArrivalFlight.time)}（日本當地時間）</div>
                         <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentArrivalFlight.model)}（時間及機型僅供參考，請以航空公司公告為準）</div>
@@ -4319,7 +4322,10 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                 : '';
             const endingBlock = currentDepartureFlight
                 ? `
-                    <div class="bg-[#eef3f5] border border-[#dde7ea] rounded-2xl p-4">
+                    <!-- 🔒 使用者反映航班資訊卡跟 Day 卡片看起來太像（尤其 Day 3「淺霧藍」主題色 #eaf1f4
+                         跟航班卡片底色 #eef3f5 很接近），邊框加粗（1px→2px）＋顏色調深一階，
+                         讓航班卡片一眼就看得出是不同種類的卡片，不只是線變粗而已 -->
+                    <div class="bg-[#eef3f5] border-2 border-[#a8c5d1] rounded-2xl p-4">
                         <div class="text-xs font-bold text-[#37505f] mb-1">🛫 航班 ${escapeHtml(currentDepartureFlight.number)} 起飛</div>
                         <div class="text-base font-black text-[#1a3a4a]">${escapeHtml(currentDepartureFlight.airport)}｜${escapeHtml(currentDepartureFlight.time)}（日本當地時間）</div>
                         <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentDepartureFlight.model)}（時間僅供參考，記得提早2-3小時抵達機場）</div>
