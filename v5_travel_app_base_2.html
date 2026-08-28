@@ -225,12 +225,15 @@
                  主標題同色系（#2c5f7c）但飽和度降低的版本（#6f8b96），三者同時調整才不會
                  只改一個維度、視覺權重還是不上不下。tracking-wide 加一點letter-spacing，
                  英文單字才有俐落感、不會擠成一團。title 屬性附上中文對照，方便看不懂英文的使用者 -->
+            <!-- 🔒 使用者要求強調三個單字的開頭字母 E/S/C（合起來剛好是 Esc，使用者確認這個聯想是 OK 的，
+                 呼應「離開家裡出去旅遊」）：首字母放大一級＋加粗＋換成主標題同色系的飽和藍，
+                 其餘字母維持原本偏淡的顏色跟字重不動，做法跟主標題「心動」「行動」放大強調同一套邏輯 -->
             <div class="flex items-center justify-center gap-2.5 sm:gap-3 mb-4">
-                <span class="text-lg sm:text-2xl font-medium text-[#6f8b96] tracking-wide" title="景點探索">Explore</span>
+                <span class="text-lg sm:text-2xl font-medium text-[#6f8b96] tracking-wide" title="景點探索"><span class="text-xl sm:text-3xl font-black text-[#2c5f7c]">E</span>xplore</span>
                 <span class="text-lg sm:text-2xl text-[#cbbfa0]">·</span>
-                <span class="text-lg sm:text-2xl font-medium text-[#6f8b96] tracking-wide" title="航班天氣同步">Sync</span>
+                <span class="text-lg sm:text-2xl font-medium text-[#6f8b96] tracking-wide" title="航班天氣同步"><span class="text-xl sm:text-3xl font-black text-[#2c5f7c]">S</span>ync</span>
                 <span class="text-lg sm:text-2xl text-[#cbbfa0]">·</span>
-                <span class="text-lg sm:text-2xl font-medium text-[#6f8b96] tracking-wide" title="AI 精選建議">Curate</span>
+                <span class="text-lg sm:text-2xl font-medium text-[#6f8b96] tracking-wide" title="AI 精選建議"><span class="text-xl sm:text-3xl font-black text-[#2c5f7c]">C</span>urate</span>
             </div>
             <div class="flex items-center justify-center gap-3 flex-wrap mb-5">
                 <!-- 定位圖釘：跟景點卡片「開啟地圖」按鈕同一個 SVG path，全站同一個視覺語言不用重畫一個新圖示 -->
