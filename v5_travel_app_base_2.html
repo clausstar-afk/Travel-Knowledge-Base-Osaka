@@ -1200,6 +1200,14 @@
         // 🎯 品牌標題跟下面的英文副標「前後對齊」：中文字之間平均加空格，讓中文標題的頭尾對準英文副標的頭尾寬度。
         // 用 JS 動態量測、動態分配（flex + justify-content: space-between 逐字分散），而不是寫死固定的
         // letter-spacing 數值——之後不管中文或英文文案怎麼改，重新整理頁面就會自動重新對齊，不用手動調間距。
+        // 🐛 抓到上一版「用副標墨跡寬度當目標」的真正 bug：中文標題的 5 個字設了 flex-shrink:0（禁止壓縮），
+        // 如果目標寬度比標題自然渲染出來的寬度還「窄」，硬設定一個更小的 width 並不會把字擠緊——
+        // flex-shrink:0 的字元完全不會被壓縮，只會整排「溢出」那個 width，字元反而被推到比原本更右邊的
+        // 位置，變成比沒對齊之前更糟。改成先量兩邊「天生」的寬度，誰比較窄就撐開誰去對齊比較寬的那邊：
+        // 中文標題天生較窄 → 撐開中文字之間的間距（跟之前一樣，flex + space-between，這個方向沒有問題，
+        // 因為目標寬度一定 ≥ 自然寬度）；英文副標天生較窄（中文字滿版字身框，實務上常常比英文墨跡寬，
+        // 這次真的量到的情況就是如此）→ 改撐開副標唯一的空白處（word-spacing），把 "Kino's" 跟
+        // "Tabinikki" 之間的間距加寬，湊到跟中文標題一樣寬——不會動到中文字，不會有溢出風險。
         function alignBrandTitle() {
             const titleEl = document.getElementById('brand-title');
             const subtitleEl = document.getElementById('brand-subtitle');
@@ -1209,39 +1217,39 @@
             const chars = [...originalText]; // 用展開運算子正確處理多位元組字元（例如未來標題裡有 emoji）
             if (chars.length < 2) return; // 少於 2 個字沒辦法「之間」加空格，維持原樣就好
 
-            // 還原成單純文字，避免舊的 flex 佈局干擾這次的副標寬度量測
+            // 先把兩邊都還原成最單純的狀態，才能量到真正未受任何舊樣式干擾的天生寬度
             titleEl.removeAttribute('style');
             titleEl.textContent = originalText;
+            subtitleEl.style.wordSpacing = '';
+            const naturalTitleWidth = titleEl.getBoundingClientRect().width;
 
-            // 🔒 使用者實測回報：容器寬度（getBoundingClientRect）兩邊明明量到一樣寬，畫面上卻還是覺得
-            // 「尾巴沒對齊」——直接在真實部署站台上量過才抓到真正原因：中英文字元「視覺墨跡」跟「排版
-            // 容器邊界」不是同一回事。中文字滿版填滿自己的字身框，最後一個字的墨跡右緣＝容器右緣；
-            // 但英文字型的最後一個字母（尤其像 i 這種窄字）右側通常留有內建的字元間距 buffer，墨跡右緣
-            // 其實比容器右緣還要靠左一截（實測差了將近 10px）——容器數字對齊了，視覺上卻沒對齊。
-            // 改用 Range API 直接量測副標題文字的「視覺墨跡邊界」，而不是整個 <p> 容器的邊界，
-            // 讓中文標題撐開的寬度是對準英文字母的真實視覺邊緣，不是對準容器名義上的邊界。
-            let targetWidth = subtitleEl.getBoundingClientRect().width;
+            // 用 Range API 量副標題文字的「視覺墨跡邊界」，而不是整個 <p> 容器的邊界——容器邊界跟墨跡
+            // 邊界常常對不上（英文字型的最後一個字母右側通常留有內建的字元間距 buffer）
+            let subtitleInkWidth = subtitleEl.getBoundingClientRect().width;
             const subtitleTextNode = subtitleEl.firstChild;
             if (subtitleTextNode && subtitleTextNode.nodeType === Node.TEXT_NODE && subtitleTextNode.length > 0) {
                 const range = document.createRange();
                 range.setStart(subtitleTextNode, 0);
                 range.setEnd(subtitleTextNode, subtitleTextNode.length);
                 const inkRect = range.getBoundingClientRect();
-                targetWidth = inkRect.right - subtitleEl.getBoundingClientRect().left;
+                subtitleInkWidth = inkRect.right - subtitleEl.getBoundingClientRect().left;
             }
 
-            // ⚠️ 這裡原本有一個「標題自然寬度 ≥ 副標寬度就整個跳過對齊」的防呆，結果太保守——
-            // 中文粗體字在多數字型下，量出來的自然寬度本來就很容易剛好跟英文副標差不多寬，
-            // 導致這個防呆常常誤判、直接跳過對齊，變成完全沒效果。
-            // 改成永遠都套用 flex + space-between：如果標題真的比副標寬到撐不下，
-            // 每個字仍然維持自己原本的寬度、不會被壓縮變形，最多就是整行看起來比副標略寬一點，
-            // 不會有「文字被擠壓扭曲」的副作用，比「整個放棄對齊」的結果好上很多。
+            const targetWidth = Math.max(naturalTitleWidth, subtitleInkWidth);
 
-            // flex-shrink:0 確保萬一字數多、空間不夠時，是「整行變寬」而不是「每個字被壓扁」
-            titleEl.innerHTML = chars.map(ch => `<span style="flex-shrink:0">${ch}</span>`).join('');
-            titleEl.style.display = 'flex';
-            titleEl.style.justifyContent = 'space-between';
-            titleEl.style.width = `${targetWidth}px`;
+            if (targetWidth > naturalTitleWidth + 0.5) {
+                // 中文標題天生比較窄：撐開中文字之間的間距去對齊英文副標的墨跡邊界
+                // flex-shrink:0 確保撐開時每個字仍維持自己原本的寬度，不會被壓縮變形
+                titleEl.innerHTML = chars.map(ch => `<span style="flex-shrink:0">${ch}</span>`).join('');
+                titleEl.style.display = 'flex';
+                titleEl.style.justifyContent = 'space-between';
+                titleEl.style.width = `${targetWidth}px`;
+            } else if (targetWidth > subtitleInkWidth + 0.5) {
+                // 英文副標天生比較窄：撐開副標裡僅有的一個空白（"Kino's" 跟 "Tabinikki" 之間），
+                // 湊到跟中文標題天生的寬度一樣，不去動中文字本身
+                subtitleEl.style.wordSpacing = `${targetWidth - subtitleInkWidth}px`;
+            }
+            // 兩邊天生就一樣寬時，兩邊都不用改
         }
 
         // 🍄 捲動中暫時縮小聊天按鈕（見 #chat-fab-wrap.is-scrolling），停止捲動 350ms 後才恢復原本大小，
