@@ -1042,9 +1042,10 @@
             renderFlightFormCollapseState();
         }
         function shortDateLabel(isoDate) {
+            // 🔒 使用者要求日期格式統一改成完整年份「2026/08/30」（原本「8/30」沒有年份、月日也沒補零）
             if (!isoDate) return '';
-            const [, m, d] = isoDate.split('-');
-            return `${parseInt(m, 10)}/${parseInt(d, 10)}`;
+            const [y, m, d] = isoDate.split('-');
+            return `${y}/${m}/${d}`;
         }
         // 🔒 使用者要求：收合摘要拿掉圖示跟「已同步航班資訊」這句話，改成去程/回程各自一行的條列文字
         // （手機窄螢幕塞成一行容易溢出），按鈕也要有文字（收合/展開），不能只有一個小箭頭
@@ -2335,7 +2336,7 @@ ${list}
                 const btnLabelText = isSelected ? '已加入行程' : '加入我的行程';
                 
                 // 官網按鈕標籤文字
-                const websiteBtnLabel = item.isSearchWebsite ? '搜尋網站 ↗' : '前往網站 ↗';
+                const websiteBtnLabel = item.isSearchWebsite ? '🔍 搜尋網站 ↗' : '🔍 前往網站 ↗';
                 
                 // 分類 Tag Array
                 const tags = item.category ? item.category.split(',').map(t => t.trim()) : ['熱門景點'];
@@ -2441,7 +2442,7 @@ ${list}
                                  hoursRemark 小灰字（預設就是「(詳見官網)」）講的是同一件事，同張卡片重複提醒
                                  兩次，拿掉這裡只留 hoursRemark 那句 -->
                             <div class="flex items-center justify-end text-[11px] text-slate-400 pt-0.5">
-                                <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" class="font-bold text-[#2c5f7c] hover:text-[#234c66] flex items-center gap-0.5">
+                                <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" class="font-bold text-[#2c5f7c] hover:text-[#234c66] flex items-center gap-0.5 underline">
                                     ${websiteBtnLabel}
                                 </a>
                             </div>
@@ -3687,7 +3688,8 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                     <div class="flex flex-col gap-3 mt-3">
                         <p class="text-xs text-slate-500 flex items-center flex-wrap">${metaLine}</p>
                         ${stayOverrideNote}
-                        ${warningBlock}
+                        <!-- 🔒 使用者要求：注意事項橫幅跟門票/營業時間橫幅上下交換，避免注意事項打斷資訊
+                             呈現節奏（先看到事實資訊，警示放後面）；兩個橫幅內部各自的排版都不更動，只調換順序 -->
                         <div class="flex items-center gap-3 pt-3 border-t border-[#f5ecd9]">
                             <!-- 🔒 這裡的排版邏輯：門票／營業時間已經改成固定拆成兩行的小區塊（不是原本會
                                  不定形換行的單行膠囊徽章），高度已經可預期穩定，不會再有「不定形換行讓按鈕
@@ -3702,6 +3704,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                                 <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟網站" class="${linkBtnClass}">${linkIconSvg}</a>
                             </div>
                         </div>
+                        ${warningBlock}
                     </div>
                     <!-- 🖐️ 手機無法用原生拖曳排序（HTML5 drag-and-drop 觸控裝置大多不支援），
                          這排按鈕才是手機使用者實際會用到的排序方式，特意放大到接近 44px 的觸控友善尺寸。
@@ -3806,7 +3809,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                                 class="flex flex-col items-center justify-center px-3 py-1.5 rounded-xl bg-[#e3dae8] hover:bg-[#cab8d4] active:bg-[#9678a5] text-[#564865] transition whitespace-nowrap"
                                 title="生成整趟行程的步調分析、天氣提醒與打包建議，每天最多 ${HEALTH_CHECK_DAILY_LIMIT} 次">
                                 <span class="text-xs font-bold">🩺 行程健檢與提醒</span>
-                                <span class="text-[10px] font-medium text-[#8a7a94]">（每天 ${HEALTH_CHECK_DAILY_LIMIT} 次）</span>
+                                <span class="text-[10px] font-medium text-[#8a7a94]">每天最多 ${HEALTH_CHECK_DAILY_LIMIT} 次</span>
                             </button>
                         </div>
                     </div>
