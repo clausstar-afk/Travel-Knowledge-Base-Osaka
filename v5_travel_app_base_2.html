@@ -704,6 +704,9 @@
         let currentDepartureFlight = null; // 🛫 回程航班，插入時間軸最後面
         let currentArrivalQueryDate = null;   // 去程查詢時輸入的日期，用來限制回程日期不能選更早
         let currentDepartureQueryDate = null; // 回程查詢時輸入的日期，用來限制去程日期不能選更晚
+        // 🔒 使用者要求：還沒查航班資訊時也能用自訂日期規劃行程（不用被迫先查航班才看得到定休日/天氣）。
+        // 只在沒有 currentArrivalQueryDate 時當作 Day 1 錨點日期，一旦查到航班資訊，航班日期優先權更高
+        let manualStartDate = null;
 
         // 🩺 行程健檢與提醒：{ issues: string[]（規則引擎抓到的事實）, summary: string（Kinopio 潤飾過的文字，
         // 現在涵蓋步調分析＋整趟天氣提醒＋打包提醒）, snapshot }
@@ -720,6 +723,7 @@
         let unassignedIds = [];        // 已加入行程但尚未被拖進任何一天的景點 id
         let draggedItemId = null;      // 目前正在被拖曳的景點 id
         let dayStartTimes = {};        // { 1: '09:30', 2: '10:00', ... } 每天的出發時間，使用者可自行調整
+        let dayEndTimes = {};          // { 1: '22:00', ... } 每天願意玩到幾點，使用者可自行調整，用來算「排入天數」下拉選單裡的剩餘空檔
         let stayOverrides = {};        // { itemId: 分鐘數 } 使用者手動調整過的個別景點停留時間，沒被調整過的景點不會出現在這裡（維持用 item.stay 建議值）
         const expandedStayEditIds = new Set(); // 目前正在展開停留時間調整介面的景點 id（純畫面狀態，不儲存、不跨帳號保留）
         // 🔒 使用者要求：每天標題旁新增收合/展開按鈕，視覺跟航班表單的收合按鈕一致（.collapse-toggle-btn）。
@@ -1347,7 +1351,7 @@
 
         // 讀取 LocalStorage 保留的「分天 + 拖拉排序」計畫
         function loadDayPlan() {
-            dayCount = 1; dayPlan = [[]]; unassignedIds = []; dayStartTimes = {}; stayOverrides = {};
+            dayCount = 1; dayPlan = [[]]; unassignedIds = []; dayStartTimes = {}; dayEndTimes = {}; stayOverrides = {}; manualStartDate = null;
             expandedStayEditIds.clear();
             try {
                 let saved = localStorage.getItem(scopedKey('travel_kb_dayplan'));
@@ -1360,7 +1364,9 @@
                     dayPlan = Array.isArray(parsed.dayPlan) && parsed.dayPlan.length > 0 ? parsed.dayPlan : [[]];
                     unassignedIds = Array.isArray(parsed.unassignedIds) ? parsed.unassignedIds : [];
                     dayStartTimes = parsed.dayStartTimes && typeof parsed.dayStartTimes === 'object' ? parsed.dayStartTimes : {};
+                    dayEndTimes = parsed.dayEndTimes && typeof parsed.dayEndTimes === 'object' ? parsed.dayEndTimes : {};
                     stayOverrides = parsed.stayOverrides && typeof parsed.stayOverrides === 'object' ? parsed.stayOverrides : {};
+                    manualStartDate = parsed.manualStartDate || null;
                 }
             } catch (e) {
                 console.error("LocalStorage load error (dayplan):", e);
@@ -1370,7 +1376,7 @@
         // 儲存「分天 + 拖拉排序」計畫至 LocalStorage（存進目前登入帳號自己的範圍）
         function saveDayPlan() {
             try {
-                localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes, stayOverrides }));
+                localStorage.setItem(scopedKey('travel_kb_dayplan'), JSON.stringify({ dayCount, dayPlan, unassignedIds, dayStartTimes, dayEndTimes, stayOverrides, manualStartDate }));
             } catch (e) {
                 console.error("LocalStorage save error (dayplan):", e);
             }
@@ -1470,12 +1476,20 @@
             return diffDays > 0 ? diffDays : null;
         }
 
-        // 依去程日期 + 第幾天，算出該天實際對應的日曆日期（沒查去程時回傳 null，不影響純手動模式）
+        // 依去程日期 + 第幾天，算出該天實際對應的日曆日期。優先用航班查詢日期，沒查航班時退而求其次
+        // 用使用者手動設定的起始日期，兩者都沒有才回傳 null（純手動模式，不影響原本行為）
         function getDateForDayIndex(d) {
-            if (!currentArrivalQueryDate) return null;
-            const date = new Date(currentArrivalQueryDate + 'T00:00:00');
+            const anchor = currentArrivalQueryDate || manualStartDate;
+            if (!anchor) return null;
+            const date = new Date(anchor + 'T00:00:00');
             date.setDate(date.getDate() + (d - 1));
             return date;
+        }
+
+        function setManualStartDate(value) {
+            manualStartDate = value || null;
+            saveDayPlan();
+            generateDynamicTimeline();
         }
 
         function formatDateLabel(date) {
@@ -1548,6 +1562,17 @@
 
         function getDayStartTime(d) {
             return dayStartTimes[d] || getDefaultDayStartTime(d);
+        }
+
+        // 🔒 使用者要求可以自訂每天願意玩到幾點，預設 22:00，用來算「排入天數」下拉選單裡顯示的剩餘空檔
+        function getDayEndTime(d) {
+            return dayEndTimes[d] || '22:00';
+        }
+
+        function setDayEndTime(d, value) {
+            dayEndTimes[d] = value;
+            saveDayPlan();
+            generateDynamicTimeline();
         }
 
         // Day 1 出發時間的下限：不能早於班機實際降落時間（人都還沒下飛機，不可能開始逛景點）
@@ -1677,6 +1702,82 @@
 
                 return { item, startMin, endMin, outOfHours, transitToNextMin };
             });
+        }
+
+        // 這天目前排定的景點，用掉出發時間到最後一站結束之間的時間後，離使用者自訂的「結束時間」還剩多少分鐘
+        // 用同一套 computeDaySchedule 算，確保跟畫面上時間軸顯示的時段完全一致；超時的話回傳 0（不顯示負數）
+        function getDayRemainingMinutes(d) {
+            const byId = {};
+            attractionsData.forEach(a => { byId[a.id] = a; });
+            const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
+            const schedule = computeDaySchedule(d, dayItems);
+            const startMin = clockToMinutes(getDayStartTime(d));
+            const endMin = clockToMinutes(getDayEndTime(d));
+            const usedUntilMin = schedule.length > 0 ? schedule[schedule.length - 1].endMin : startMin;
+            return Math.max(0, endMin - usedUntilMin);
+        }
+
+        // 🗺️ 使用者要求：把新景點加進「排入天數」下拉選單時，依「地緣相關度」排序，不用 AI，只用現有的
+        // 區域距離啟發式規則。同區域＝最強訊號，區域距離表上「較近」＝次強訊號，都不符合＝沒有訊號。
+        // 相關度由高到低排前面，其餘（含空白天／沒有訊號的天）依 Day 編號由小到大排在後面，不隱藏任何選項。
+        const NEARBY_TRANSIT_THRESHOLD_MIN = 20; // 區域距離估算在這個時間內，算「較近」
+        function getDaysSortedByRelevance(item) {
+            const byId = {};
+            attractionsData.forEach(a => { byId[a.id] = a; });
+            const scored = [];
+            for (let d = 1; d <= dayCount; d++) {
+                const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
+                let score = 0; // 0 = 空白天／完全不相關（不隱藏，只是排到後面）
+                dayItems.forEach(dayItem => {
+                    if (getMainAreaKey(dayItem.area) === getMainAreaKey(item.area)) {
+                        score = Math.max(score, 2);
+                    } else if (estimateTransitMinutes(dayItem.area, item.area) <= NEARBY_TRANSIT_THRESHOLD_MIN) {
+                        score = Math.max(score, 1);
+                    }
+                });
+                scored.push({ day: d, score });
+            }
+            scored.sort((a, b) => b.score - a.score || a.day - b.day);
+            return scored.map(s => s.day);
+        }
+
+        // 🪄 依「離下一站最近的排前面，距離差不多近時改用營業時間較緊的排前面」重新排序這一天的順序，
+        // 只在使用者主動點擊時套用，不會自動悄悄改動使用者手動排的順序。第一個景點維持原本的起點不動，
+        // 只重排它後面的順序，尊重使用者原本選定的當天起點。
+        const REORDER_CLOSE_ENOUGH_MIN = 5; // 距離差在這個範圍內，視為「差不多近」，改用營業時間 tie-break
+        function autoReorderDay(d) {
+            const byId = {};
+            attractionsData.forEach(a => { byId[a.id] = a; });
+            const items = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
+            if (items.length <= 1) return;
+
+            function closingMinutes(item) {
+                const hoursRange = parseHoursRange(item.hours);
+                return hoursRange ? hoursRange.closeMin : Infinity; // 沒有營業時間資訊（例如公園）視為不趕時間
+            }
+
+            const ordered = [items[0]]; // 保留原本的第一站當起點，只重排它後面的順序
+            const remaining = items.slice(1);
+            while (remaining.length > 0) {
+                const last = ordered[ordered.length - 1];
+                let bestIdx = 0;
+                let bestDist = estimateTransitMinutes(last.area, remaining[0].area);
+                for (let i = 1; i < remaining.length; i++) {
+                    const dist = estimateTransitMinutes(last.area, remaining[i].area);
+                    if (dist < bestDist - REORDER_CLOSE_ENOUGH_MIN) {
+                        bestIdx = i; bestDist = dist;
+                    } else if (Math.abs(dist - bestDist) <= REORDER_CLOSE_ENOUGH_MIN
+                        && closingMinutes(remaining[i]) < closingMinutes(remaining[bestIdx])) {
+                        bestIdx = i; bestDist = Math.min(dist, bestDist);
+                    }
+                }
+                ordered.push(remaining[bestIdx]);
+                remaining.splice(bestIdx, 1);
+            }
+            dayPlan[d - 1] = ordered.map(item => item.id);
+            saveDayPlan();
+            showToast('已依距離跟營業時間重新排序這一天的順序！', true, '🪄');
+            generateDynamicTimeline();
         }
 
         // 調整行程總天數：縮減時，被砍掉那幾天的景點自動退回「未分配」，不會憑空消失
@@ -3567,8 +3668,9 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
 
         // 渲染「未分配」區的小卡片：排入某一天一律透過下拉選單（見下方大註解）
         function renderUnassignedChip(item) {
-            const dayOptions = Array.from({ length: dayCount }, (_, i) => i + 1)
-                .map(d => `<option value="${d}">排入 Day${d}</option>`).join('');
+            // 🔒 使用者要求：選項依地緣相關度排序（不隱藏），並附上每天的剩餘空檔，方便判斷排哪天
+            const dayOptions = getDaysSortedByRelevance(item)
+                .map(d => `<option value="${d}">排入 Day${d}（剩餘 ${formatMinutesToDuration(getDayRemainingMinutes(d))}）</option>`).join('');
             const safeName = escapeHtml(item.name);
             const jsAttrName = escapeJsAttr(item.name);
             // 🔒 使用者要求：拖曳只保留「已排定天數之間」跟「同一天內重排」，未分配區的小卡片不再能拖曳
@@ -3852,6 +3954,19 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                     </div>
             `;
 
+            // 🔒 使用者要求：還沒查航班資訊時，也能自訂 Day 1 日期來規劃行程（定休日/天氣這些跟日期綁定的
+            // 功能才有得用）。一旦查到航班資訊，日期一律以航班為準，這個手動輸入就不再顯示，避免兩個日期來源互相打架
+            if (!currentArrivalQueryDate) {
+                timelineHTML += `
+                    <div class="flex items-center gap-2 flex-wrap text-xs">
+                        <label for="manual-start-date-input" class="font-bold text-slate-500">🗓️ 自訂 Day 1 日期</label>
+                        <input type="date" id="manual-start-date-input" value="${manualStartDate || ''}" onchange="setManualStartDate(this.value)"
+                            class="px-3 py-1.5 text-xs bg-[#faf6ee] border border-[#d8cba8] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                        <span class="text-slate-400">還沒有航班資訊也可以先排，之後查到航班會自動改用航班日期</span>
+                    </div>
+                `;
+            }
+
             // 🛡️ 防呆：比對「手動設定的總天數」跟「去程/回程航班暗示的實際天數」是否一致，不一致時提示但不強制覆蓋
             const impliedDayCount = getFlightImpliedDayCount();
             if (impliedDayCount !== null && impliedDayCount !== dayCount) {
@@ -3956,6 +4071,9 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                 const dayIsRainy = dayWeather ? isRainyWeatherCode(dayWeather.code) : false;
                 // 🕐 本地即時運算這天的時間軸（零 API 成本，拖曳/換天後每次渲染都會自動重算）
                 const schedule = computeDaySchedule(d, dayItems);
+                // 🪄 這天只要有任何一個景點被標示「可能超出營業時間」，就顯示「自動重新排序」按鈕；
+                // 平常沒有超時疑慮時完全不顯示，不佔用畫面版面
+                const hasOutOfHoursWarning = schedule.some(s => s.outOfHours);
 
                 // 🛡️ Day 1 出發時間不能早於班機實際降落時間（人都還沒下飛機，不可能開始逛景點）
                 const earliestStart = d === 1 ? getDay1EarliestStartTime() : null;
@@ -4002,6 +4120,12 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                                 🚩 出發
                                 <input type="time" value="${escapeHtml(currentStart)}" ${earliestStart ? `min="${escapeHtml(earliestStart)}"` : ''} onchange="setDayStartTime(${d}, this.value)" class="border ${startTooEarly ? 'border-amber-400' : 'border-[#d8cba8]'} rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
                             </label>
+                            <!-- 🔒 使用者要求可以自訂每天願意玩到幾點，比照「出發」時間同樣的欄位樣式與互動方式，
+                                 用來算「排入天數」下拉選單裡顯示的剩餘空檔，不需要另外開一個設定區塊 -->
+                            <label class="flex items-center gap-1 text-[11px] text-slate-500 font-bold">
+                                🏁 結束
+                                <input type="time" value="${escapeHtml(getDayEndTime(d))}" onchange="setDayEndTime(${d}, this.value)" class="border border-[#d8cba8] rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
+                            </label>
                             <div class="flex items-center gap-2 flex-wrap">
                                 ${weatherBadge}
                                 ${sunsetBadge}
@@ -4011,6 +4135,16 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                              跟天氣/日落徽章擠在同一個自動換行的橫排裡，長度一撐大就會把天氣/日落擠到下一行 -->
                         ${dayItems.length > 0 ? `<p class="text-xs text-slate-400 mb-3">共 ${dayItems.length} 個景點</p>` : ''}
                         ${startTimeWarning ? `<div class="flex flex-wrap items-center gap-2 mb-3">${startTimeWarning}</div>` : ''}
+                        <!-- 🪄 只在這天有景點被標示「可能超出營業時間」時才出現，按下去用「離下一站最近優先、
+                             距離差不多近時改用營業時間較緊優先」的規則重排順序，平常完全不佔版面 -->
+                        ${hasOutOfHoursWarning ? `
+                            <div class="mb-3">
+                                <button onclick="autoReorderDay(${d})" class="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#a8362b] bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-2.5 py-1.5 transition">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M10 2l1.2 4.8L16 8l-4.8 1.2L10 14l-1.2-4.8L4 8l4.8-1.2z"/><path d="M18 13l0.8 2.2L21 16l-2.2 0.8L18 19l-0.8-2.2L15 16l2.2-0.8z"/></svg>
+                                    自動重新排序
+                                </button>
+                            </div>
+                        ` : ''}
                         <div class="pl-9 ml-3.5 border-l-2 border-[#d3e3e9] space-y-3 pb-1 min-h-[3.5rem]"
                              ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, ${d})">
                             ${dayItems.length === 0
