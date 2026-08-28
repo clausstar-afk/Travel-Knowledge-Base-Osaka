@@ -444,7 +444,10 @@
                 <div class="flex flex-col sm:flex-row gap-2 sm:items-end">
                     <!-- relative 容器讓下面的自訂建議清單可以絕對定位貼齊這個輸入框，取代原生 <datalist>
                          （原生的樣式沒辦法客製、又跟全站風格不搭，且部分瀏覽器清空輸入框後選項不會跟著消失） -->
-                    <div class="relative flex-1">
+                    <!-- 🔒 使用者要求去程/回程搜尋框:日期框寬度比例統一（去程 8:2、回程 7:3），
+                         改用 flex-[n] 依比例分配寬度，實際比例由 applyFlightFieldWidthRatio() 依
+                         目前選的去程/回程動態切換這兩個容器的 class -->
+                    <div id="flight-number-wrap" class="relative sm:flex-[8] sm:min-w-0">
                         <input type="text" id="flight-number-input" placeholder="去程航班號碼，例如 CI173"
                             autocomplete="off" oninput="onFlightNumberInput()" onblur="hideFlightNumberSuggestions()"
                             class="w-full px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
@@ -455,10 +458,10 @@
                          不會有任何提示文字，這是瀏覽器原生行為的落差，沒辦法用 CSS 控制。改成自己加一個固定會
                          顯示的文字標籤，不依賴瀏覽器願不願意顯示提示文字。這個欄位多了 label 會比其他兩個欄位
                          高，父層加 `sm:items-end` 讓整排元素底部對齊，桌面版三個欄位還是會維持原本水平切齊。 -->
-                    <div class="w-full sm:w-auto">
+                    <div id="flight-date-wrap" class="w-full sm:flex-[2] sm:min-w-0">
                         <label for="flight-date-input" class="block text-[11px] font-bold text-slate-500 mb-1">📅 出發日期</label>
                         <input type="date" id="flight-date-input" onchange="onFlightDateChange()"
-                            class="w-full sm:w-auto px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
+                            class="w-full px-4 py-2.5 text-sm bg-[#faf6ee] border border-[#c3d3d9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#8ba7b3]">
                     </div>
                     <button onclick="lookupFlight()" id="flight-lookup-btn"
                         class="px-5 py-2.5 text-sm font-bold text-white bg-[#5c7a8a] hover:bg-[#37505f] rounded-xl transition shrink-0">
@@ -835,11 +838,27 @@
         // 🛡️ 防呆：回程日期不能早於去程日期、去程日期不能晚於回程日期
         // 順便把航班號碼輸入框的提示文字換成「去程航班號碼」/「回程航班號碼」，讓使用者一眼就知道
         // 現在填的是哪一段航班，不用再回頭看上面選了哪顆單選鈕
+        // 🔒 使用者要求去程/回程搜尋框:日期框寬度比例不一樣：去程 8:2、回程 7:3
+        function applyFlightFieldWidthRatio(flightType) {
+            const numberWrap = document.getElementById('flight-number-wrap');
+            const dateWrap = document.getElementById('flight-date-wrap');
+            numberWrap.classList.remove('sm:flex-[8]', 'sm:flex-[7]');
+            dateWrap.classList.remove('sm:flex-[2]', 'sm:flex-[3]');
+            if (flightType === 'departure') {
+                numberWrap.classList.add('sm:flex-[7]');
+                dateWrap.classList.add('sm:flex-[3]');
+            } else {
+                numberWrap.classList.add('sm:flex-[8]');
+                dateWrap.classList.add('sm:flex-[2]');
+            }
+        }
+
         function updateFlightDateConstraints() {
             const dateInput = document.getElementById('flight-date-input');
             const flightType = document.querySelector('input[name="flight-type"]:checked').value;
             document.getElementById('flight-number-input').placeholder =
                 flightType === 'departure' ? '回程航班號碼，例如 CI173' : '去程航班號碼，例如 CI173';
+            applyFlightFieldWidthRatio(flightType);
             dateInput.removeAttribute('min');
             dateInput.removeAttribute('max');
             if (flightType === 'departure' && currentArrivalQueryDate) {
