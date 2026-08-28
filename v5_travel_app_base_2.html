@@ -838,19 +838,12 @@
         // 🛡️ 防呆：回程日期不能早於去程日期、去程日期不能晚於回程日期
         // 順便把航班號碼輸入框的提示文字換成「去程航班號碼」/「回程航班號碼」，讓使用者一眼就知道
         // 現在填的是哪一段航班，不用再回頭看上面選了哪顆單選鈕
-        // 🔒 使用者要求去程/回程搜尋框:日期框寬度比例不一樣：去程 8:2、回程 7:3
+        // 🔒 使用者要求去程/回程搜尋框:日期框寬度比例統一都用 8:2（原本回程另外用 7:3，跟去程不一致）
         function applyFlightFieldWidthRatio(flightType) {
             const numberWrap = document.getElementById('flight-number-wrap');
             const dateWrap = document.getElementById('flight-date-wrap');
-            numberWrap.classList.remove('sm:flex-[8]', 'sm:flex-[7]');
-            dateWrap.classList.remove('sm:flex-[2]', 'sm:flex-[3]');
-            if (flightType === 'departure') {
-                numberWrap.classList.add('sm:flex-[7]');
-                dateWrap.classList.add('sm:flex-[3]');
-            } else {
-                numberWrap.classList.add('sm:flex-[8]');
-                dateWrap.classList.add('sm:flex-[2]');
-            }
+            numberWrap.classList.add('sm:flex-[8]');
+            dateWrap.classList.add('sm:flex-[2]');
         }
 
         function updateFlightDateConstraints() {
