@@ -3780,8 +3780,14 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             // （原本可以拖進某一天，現在只能用「排入天數」下拉選單），拿掉 draggable／拖曳相關屬性跟
             // 拖曳把手圖示，避免使用者抓著拖卻沒有任何反應
             return `
+                <!-- 🔒 使用者實測回報：手機上景點名稱一長（例如「新世界本通商店街」），這個 <span> 沒有
+                     任何寬度限制，外層又是 flex-wrap 的橫排容器——瀏覽器把這張卡片的可用寬度擠壓到極窄時，
+                     中文字沒有天然的斷詞邊界，會被逼到一個字一行、整張卡片被拉得又高又窄，看起來完全跑版。
+                     改成用 truncate（overflow:hidden + white-space:nowrap + text-overflow:ellipsis）+
+                     固定 max-width，名稱太長就顯示「...」省略號，不會再逼出直排文字；完整名稱補進 title
+                     屬性，長按/滑鼠停留還是看得到全名 -->
                 <div class="flex items-center gap-2 bg-[#faf6ee] border border-[#d8cba8] rounded-xl px-3 py-2 shadow-sm">
-                    <span class="text-xs font-bold text-slate-700">${safeName}</span>
+                    <span class="text-xs font-bold text-slate-700 truncate max-w-[6rem]" title="${safeName}">${safeName}</span>
                     <select onchange="moveItemToDay('${item.id}', parseInt(this.value, 10))" class="text-[11px] text-[#2c5f7c] font-bold bg-transparent border-none ml-1 focus:outline-none">
                         <option value="" selected disabled>排入天數 ▶</option>
                         ${dayOptions}
