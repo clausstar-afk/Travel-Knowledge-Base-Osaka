@@ -1220,7 +1220,7 @@
             // 先把兩邊都還原成最單純的狀態，才能量到真正未受任何舊樣式干擾的天生寬度
             titleEl.removeAttribute('style');
             titleEl.textContent = originalText;
-            subtitleEl.style.wordSpacing = '';
+            subtitleEl.style.letterSpacing = '';
             const naturalTitleWidth = titleEl.getBoundingClientRect().width;
 
             // 用 Range API 量副標題文字的「視覺墨跡邊界」，而不是整個 <p> 容器的邊界——容器邊界跟墨跡
@@ -1245,9 +1245,13 @@
                 titleEl.style.justifyContent = 'space-between';
                 titleEl.style.width = `${targetWidth}px`;
             } else if (targetWidth > subtitleInkWidth + 0.5) {
-                // 英文副標天生比較窄：撐開副標裡僅有的一個空白（"Kino's" 跟 "Tabinikki" 之間），
-                // 湊到跟中文標題天生的寬度一樣，不去動中文字本身
-                subtitleEl.style.wordSpacing = `${targetWidth - subtitleInkWidth}px`;
+                // 英文副標天生比較窄：原本用 word-spacing 只加寬"Kino's"跟"Tabinikki"中間那一個空白，
+                // 使用者反映一次全部塞在單一個縫隙裡，視覺上那個縫看起來太開、不自然。改用 letter-spacing
+                // 平均分配到「每一個字元之間」（不只是那一個空白），撐開的量比較細碎、不會有單一大縫隙，
+                // 效果更接近中文那邊「字元之間平均分配空格」的視覺語言
+                const subtitleCharCount = subtitleEl.textContent.length;
+                const gapCount = Math.max(1, subtitleCharCount - 1);
+                subtitleEl.style.letterSpacing = `${(targetWidth - subtitleInkWidth) / gapCount}px`;
             }
             // 兩邊天生就一樣寬時，兩邊都不用改
         }
@@ -1807,6 +1811,8 @@
         // 🗺️ 使用者要求：把新景點加進「排入天數」下拉選單時，依「地緣相關度」排序，不用 AI，只用現有的
         // 區域距離啟發式規則。同區域＝最強訊號，區域距離表上「較近」＝次強訊號，都不符合＝沒有訊號。
         // 相關度由高到低排前面，其餘（含空白天／沒有訊號的天）依 Day 編號由小到大排在後面，不隱藏任何選項。
+        // 🔒 使用者實測回報：完全不顯示原因的話，使用者會很困惑「為什麼 Day2 突然被排到最前面」——
+        // 改回附上簡短原因標籤（例如「同區域：大阪海遊館」），讓排序背後的理由看得到，不是黑箱
         const NEARBY_TRANSIT_THRESHOLD_MIN = 20; // 區域距離估算在這個時間內，算「較近」
         function getDaysSortedByRelevance(item) {
             const byId = {};
@@ -1815,17 +1821,24 @@
             for (let d = 1; d <= dayCount; d++) {
                 const dayItems = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
                 let score = 0; // 0 = 空白天／完全不相關（不隱藏，只是排到後面）
+                let reasonLabel = null; // 例如「同區域：大阪海遊館」「較近：心齋橋」
+                let bestNearbyMin = Infinity;
                 dayItems.forEach(dayItem => {
                     if (getMainAreaKey(dayItem.area) === getMainAreaKey(item.area)) {
-                        score = Math.max(score, 2);
-                    } else if (estimateTransitMinutes(dayItem.area, item.area) <= NEARBY_TRANSIT_THRESHOLD_MIN) {
-                        score = Math.max(score, 1);
+                        if (score < 2) { score = 2; reasonLabel = `同區域：${dayItem.name}`; }
+                    } else {
+                        const transitMin = estimateTransitMinutes(dayItem.area, item.area);
+                        if (transitMin <= NEARBY_TRANSIT_THRESHOLD_MIN && score < 2 && transitMin < bestNearbyMin) {
+                            bestNearbyMin = transitMin;
+                            score = 1;
+                            reasonLabel = `較近：${dayItem.name}`;
+                        }
                     }
                 });
-                scored.push({ day: d, score });
+                scored.push({ day: d, score, reasonLabel });
             }
             scored.sort((a, b) => b.score - a.score || a.day - b.day);
-            return scored.map(s => s.day);
+            return scored;
         }
 
         // 🪄 使用者確認：規則改成「營業時間優先、距離退居第二」——原本「距離優先＋保留第一站不動」的版本
@@ -3756,7 +3769,11 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
         function renderUnassignedChip(item) {
             // 🔒 使用者要求：選項依地緣相關度排序（不隱藏），並附上每天的剩餘空檔，方便判斷排哪天
             const dayOptions = getDaysSortedByRelevance(item)
-                .map(d => `<option value="${d}">排入 Day${d}（剩餘 ${formatMinutesToDuration(getDayRemainingMinutes(d))}）</option>`).join('');
+                .map(({ day: d, reasonLabel }) => {
+                    const remainingText = `剩餘 ${formatMinutesToDuration(getDayRemainingMinutes(d))}`;
+                    const label = reasonLabel ? `${escapeHtml(reasonLabel)}・${remainingText}` : remainingText;
+                    return `<option value="${d}">排入 Day${d}（${label}）</option>`;
+                }).join('');
             const safeName = escapeHtml(item.name);
             const jsAttrName = escapeJsAttr(item.name);
             // 🔒 使用者要求：拖曳只保留「已排定天數之間」跟「同一天內重排」，未分配區的小卡片不再能拖曳
