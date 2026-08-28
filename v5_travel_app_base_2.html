@@ -2014,17 +2014,32 @@
         }
 
         // CSV 資料讀取與防呆解析
+        // 🔒 使用者要求：抓景點資料原本只試一次，失敗就直接跳去用內建 3 筆備用資料，沒有自動重試。
+        // Google Sheets 這種公開連結偶爾會遇到一次性的網路延遲/失誤，加一個簡單的重試（間隔 800ms
+        // 再試一次），降低單次瞬間失誤就整個卡在備用資料的機率；兩次都失敗才真的顯示備用資料
+        const CSV_FETCH_MAX_ATTEMPTS = 2;
         async function fetchAttractionsData() {
             document.getElementById('skeleton-grid').classList.remove('hidden');
             document.getElementById('attraction-grid').classList.add('hidden');
             document.getElementById('fallback-notice').classList.add('hidden');
             let usedFallback = false;
             try {
-                const res = await fetch(CSV_URL);
-                if (!res.ok) throw new Error("CSV Fetch failed");
-                const text = await res.text();
-                const parsedData = parseCSVData(text);
-                if (parsedData && parsedData.length > 0) {
+                let parsedData = null;
+                for (let attempt = 1; attempt <= CSV_FETCH_MAX_ATTEMPTS; attempt++) {
+                    try {
+                        const res = await fetch(CSV_URL);
+                        if (!res.ok) throw new Error("CSV Fetch failed with status " + res.status);
+                        const text = await res.text();
+                        const parsed = parseCSVData(text);
+                        if (!parsed || parsed.length === 0) throw new Error("CSV parsed but empty");
+                        parsedData = parsed;
+                        break;
+                    } catch (attemptErr) {
+                        console.warn(`無法取得線上 CSV（第 ${attempt}/${CSV_FETCH_MAX_ATTEMPTS} 次嘗試）:`, attemptErr);
+                        if (attempt < CSV_FETCH_MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 800));
+                    }
+                }
+                if (parsedData) {
                     attractionsData = parsedData;
                 } else {
                     attractionsData = MOCK_DATA;
