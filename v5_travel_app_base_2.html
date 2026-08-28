@@ -4034,8 +4034,6 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             // 其餘全部降級成同等視覺權重的純文字，才不會每張卡片都掛滿一堆搶眼的圖示/圓角標籤
             const lastEntryInfo = getLastEntryInfo(item);
             const lastEntryText = lastEntryInfo ? `<span class="text-amber-700 font-bold">${escapeHtml(lastEntryInfo)}</span>` : '';
-            // 雨天室內備案（正面訊息，不是警示）：用全站代表「正面」的綠色，不需要圖示
-            const indoorRainNote = (dayIsRainy && isIndoorFriendly(item)) ? `<span class="text-[#6b8f71]">雨天備案佳</span>` : '';
 
             // 🔒 這張卡片還會用到的其餘 CSV 欄位，統一跳脫
             const safeName = escapeHtml(item.name);
@@ -4121,7 +4119,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             // 🔒 使用者要求：收合狀態只留名稱／時段／停留時間／排序按鈕（＋警示），其餘（最終入場、
             // 雨天備案這類補充資訊）改移進展開詳情區塊，不再常駐佔版面
             const primaryMetaLine = buildMetaLine([timeBadge, staySegment]);
-            const secondaryMetaLine = buildMetaLine([lastEntryText, indoorRainNote]);
+            const secondaryMetaLine = buildMetaLine([lastEntryText]);
             const isDetailExpanded = expandedDetailIds.has(item.id);
 
             // 📌 地圖／官網：改用可以跟卡片其他文字同色系的 SVG 線條圖示，不用會被瀏覽器強制上色的
