@@ -61,7 +61,11 @@
            控制列的按鈕（不是捲動途中才會發生），代表這兩個緩解手段沒辦法保證不重疊。全站沒有任何
            操作型按鈕聚集在左側，換到左下角才是結構性徹底排除衝突。
            圓形熱區（clip-path）／捲動縮小淡化（.is-scrolling）／光圈效果全部維持不變，只改位置 */
-        #chat-fab-wrap { position: fixed; bottom: 6rem; left: 1.5rem; z-index: 40; width: 3.75rem; height: 3.75rem; transition: transform 0.2s ease, opacity 0.2s ease; }
+        /* 🔒 使用者要求：尺寸縮小一個級距（3.75rem→3.25rem）、往下移動一點（bottom 6rem→5.5rem，
+           不用太多，位置感覺差不多但整體佔用畫面空間變小）、閒置時降低不透明度（新增 opacity:0.75，
+           滑鼠移上去/取得焦點時恢復完全不透明，方便瞄準點擊），跟捲動中的縮小/淡化狀態互相獨立疊加 */
+        #chat-fab-wrap { position: fixed; bottom: 5.5rem; left: 1.5rem; z-index: 40; width: 3.25rem; height: 3.25rem; opacity: 0.75; transition: transform 0.2s ease, opacity 0.2s ease; }
+        #chat-fab-wrap:hover, #chat-fab-wrap:focus-within { opacity: 1; }
         #chat-fab-wrap.is-scrolling { transform: scale(0.55); opacity: 0.45; pointer-events: none; }
         /* 光圈改成獨立的 ::after（不疊在按鈕本體上），這樣按鈕上的 clip-path（圓形點擊熱區）
            才不會連同 box-shadow 光圈一起被裁掉——clip-path 會裁掉整個元素的繪製範圍，
@@ -234,8 +238,10 @@
                     <div class="w-9 h-9 rounded-lg bg-[#eaf1f4] flex items-center justify-center shrink-0">
                         <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
                     </div>
-                    <div class="text-left">
-                        <div class="hand text-2xl font-black text-[#2c5f7c] leading-tight" id="hero-count-attractions">38+</div>
+                    <!-- 🔒 使用者要求數字/文字改成置中對齊（原本 text-left，兩者理論上左邊界一致，但使用者
+                         要的是視覺上「置中」那種效果） -->
+                    <div class="text-center">
+                        <div class="hand text-2xl font-black text-[#2c5f7c] leading-tight" id="hero-count-attractions">38<span class="text-lg">+</span></div>
                         <div class="text-[10px] font-bold text-[#8a7a5c]">精選景點</div>
                     </div>
                 </div>
@@ -246,7 +252,9 @@
                     <div class="w-9 h-9 rounded-lg bg-[#eaf1f4] flex items-center justify-center shrink-0">
                         <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5 5-2z"/></svg>
                     </div>
-                    <div class="text-left">
+                    <!-- 🔒 使用者要求數字/文字改成置中對齊（原本 text-left，兩者理論上左邊界一致，但使用者
+                         要的是視覺上「置中」那種效果） -->
+                    <div class="text-center">
                         <div class="hand text-2xl font-black text-[#2c5f7c] leading-tight">7</div>
                         <div class="text-[10px] font-bold text-[#8a7a5c]">大地區分類</div>
                     </div>
@@ -257,7 +265,9 @@
                     <div class="w-9 h-9 rounded-lg bg-[#eaf1f4] flex items-center justify-center shrink-0">
                         <svg class="w-[18px] h-[18px] text-[#2c5f7c]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2 8 8 2-8 2-2 8-2-8-8-2 8-2 2-8z"/></svg>
                     </div>
-                    <div class="text-left">
+                    <!-- 🔒 使用者要求數字/文字改成置中對齊（原本 text-left，兩者理論上左邊界一致，但使用者
+                         要的是視覺上「置中」那種效果） -->
+                    <div class="text-center">
                         <div class="hand text-2xl font-black text-[#2c5f7c] leading-tight">AI</div>
                         <div class="text-[10px] font-bold text-[#8a7a5c]">客製化建議</div>
                     </div>
@@ -2278,13 +2288,20 @@ ${list}
                 <button type="button" onclick="openDetailModal('${item.id}')"
                     class="flex-none w-40 sm:w-44 text-left bg-[#faf6ee] paper-texture rounded-lg overflow-hidden border border-[#e8dcc8] shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-200"
                     style="scroll-snap-align:start;">
+                    <!-- 🔒 使用者實測回報「所有景點」頁籤往下滑會卡頓，跟「我的行程」頁籤比起來不流暢。
+                         找到的根因：每張瀏覽層卡片這裡原本有 2 個 backdrop-blur-md 徽章（分類標籤＋評分），
+                         最多同時渲染到 38 張卡片（7 個地區橫排全部一次渲染，沒有虛擬化），等於同時要處理
+                         最多 76 層即時模糊運算——backdrop-blur 是很吃 GPU 的效果，這麼多層同時疊加是造成
+                         捲動卡頓的主因。拿掉 backdrop-blur-md，只留半透明底色（bg-[#faf6ee]/90 本身
+                         對比度已經足夠可讀），視覺差異很小但省掉大量即時模糊運算。img 也加上
+                         decoding="async"，讓圖片解碼不卡在主執行緒，載入時滑動更順 -->
                     <div class="relative h-24 sm:h-28 overflow-hidden bg-[#e8dcc8]">
-                        <img src="${safeImage}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="this.style.display='none'">
+                        <img src="${safeImage}" alt="${safeName}" loading="lazy" decoding="async" class="w-full h-full object-cover" onerror="this.style.display='none'">
                         <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div>
                         <div class="absolute top-1.5 left-1.5 max-w-[75%]">
-                            <span class="px-1.5 py-0.5 text-[10px] font-medium text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full truncate block">${escapeHtml(primaryCategory)}</span>
+                            <span class="px-1.5 py-0.5 text-[10px] font-medium text-slate-800 bg-[#faf6ee]/90 rounded-full truncate block">${escapeHtml(primaryCategory)}</span>
                         </div>
-                        <div class="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full">
+                        <div class="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold text-slate-800 bg-[#faf6ee]/90 rounded-full">
                             <span class="text-amber-600">★</span><span>${safeRating}</span>
                         </div>
                     </div>
@@ -2346,19 +2363,20 @@ ${list}
                     <div>
                         <!-- 1. 頂部圖片區：從 h-64(256px) 瘦身到 h-40(160px)，這是整張卡片最大的省高度來源 -->
                         <div class="relative h-40 overflow-hidden bg-[#e8dcc8]">
-                            <img src="${safeImage}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="this.style.display='none'">
+                            <img src="${safeImage}" alt="${safeName}" loading="lazy" decoding="async" class="w-full h-full object-cover" onerror="this.style.display='none'">
                             <!-- Scrim Overlay 漸層遮罩 -->
                             <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
-                            <!-- 左上角：分類標籤群 -->
+                            <!-- 左上角：分類標籤群。🔒 跟瀏覽層卡片同理拿掉 backdrop-blur-md（見上方
+                                 buildAttractionBrowseCardHTML 的說明），減少同時渲染多張卡片時的 GPU 負擔 -->
                             <div class="absolute top-2.5 left-2.5 flex flex-wrap gap-1 z-10 max-w-[75%]">
-                                ${tags.map(t => `<span class="px-2 py-0.5 text-[11px] font-medium text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full shadow-sm">${escapeHtml(t)}</span>`).join('')}
+                                ${tags.map(t => `<span class="px-2 py-0.5 text-[11px] font-medium text-slate-800 bg-[#faf6ee]/90 rounded-full shadow-sm">${escapeHtml(t)}</span>`).join('')}
                             </div>
                             <!-- 右上角：Google 評分 (★ + 分數)。
                                  🔒 使用者反映黑底白字跟整體米色/深藍/紫色的暖色主題不搭，改成米白底＋深色文字，
-                                 跟左上角分類標籤同一組配色語言（bg-[#faf6ee]/90 backdrop-blur-md），
-                                 星星從 amber-400（給深色底用）改成 amber-600（在淺色底上對比度才夠） -->
+                                 跟左上角分類標籤同一組配色語言；星星從 amber-400（給深色底用）改成 amber-600
+                                 （在淺色底上對比度才夠）；拿掉 backdrop-blur-md，理由同上 -->
                             <div class="absolute top-2.5 right-2.5 z-10">
-                                <div class="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-slate-800 bg-[#faf6ee]/90 backdrop-blur-md rounded-full shadow-sm">
+                                <div class="flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-slate-800 bg-[#faf6ee]/90 rounded-full shadow-sm">
                                     <span class="text-amber-600">★</span>
                                     <span>${safeRating}</span>
                                 </div>
@@ -2511,7 +2529,8 @@ ${list}
             // 🍄 Hero 區塊的「精選景點」數字改成跟著資料庫即時算，不再寫死數字：
             // 之後 Google Sheet 增減景點筆數，這裡永遠自動對得上，不用回頭改 Hero 文案
             const heroCount = document.getElementById('hero-count-attractions');
-            if (heroCount) heroCount.textContent = `${attractionsData.length}+`;
+            // 🔒 使用者要求「+」號縮小一個級距，改用 innerHTML 讓 + 號能套用比數字小一號的字級
+            if (heroCount) heroCount.innerHTML = `${attractionsData.length}<span class="text-lg">+</span>`;
         }
 
         // Toast 動態通知
@@ -3787,7 +3806,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                                 class="flex flex-col items-center justify-center px-3 py-1.5 rounded-xl bg-[#e3dae8] hover:bg-[#cab8d4] active:bg-[#9678a5] text-[#564865] transition whitespace-nowrap"
                                 title="生成整趟行程的步調分析、天氣提醒與打包建議，每天最多 ${HEALTH_CHECK_DAILY_LIMIT} 次">
                                 <span class="text-xs font-bold">🩺 行程健檢與提醒</span>
-                                <span class="text-[10px] font-medium text-[#8a7a94]">每天最多 ${HEALTH_CHECK_DAILY_LIMIT} 次</span>
+                                <span class="text-[10px] font-medium text-[#8a7a94]">（每天 ${HEALTH_CHECK_DAILY_LIMIT} 次）</span>
                             </button>
                         </div>
                     </div>
@@ -3849,7 +3868,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                 // 機型維持原本較小字級/較淡顏色，主從關係更清楚；機位配置圖連結原本只有底線＋深色文字，
                 // 不容易辨識成可互動元素，改用主題珊瑚色系文字＋加上 ↗ 箭頭
                 const arrivalSeatMapLink = arrivalSeatMapUrl
-                    ? `<a href="${escapeHtml(arrivalSeatMapUrl)}" target="_blank" rel="noopener noreferrer" class="text-[11px] font-bold text-[#a8695c] hover:text-[#8a5348] mt-2 inline-flex items-center gap-0.5">🔍 查看去程機位配置圖<span class="font-normal">↗</span></a>`
+                    ? `<a href="${escapeHtml(arrivalSeatMapUrl)}" target="_blank" rel="noopener noreferrer" class="text-[11px] font-bold text-[#a8695c] hover:text-[#8a5348] mt-2 inline-flex items-center gap-0.5 underline">🔍 查看去程機位配置圖<span class="font-normal">↗</span></a>`
                     : '';
                 timelineHTML += `
                     <!-- 航班抵達卡片 -->
@@ -3987,7 +4006,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             const departureSeatMapUrl = currentDepartureFlight ? getAerolopaUrl(currentDepartureFlight.number) : null;
             // 🔒 同上：跟去程卡片一樣的視覺層級調整
             const departureSeatMapLink = departureSeatMapUrl
-                ? `<a href="${escapeHtml(departureSeatMapUrl)}" target="_blank" rel="noopener noreferrer" class="text-[11px] font-bold text-[#a8695c] hover:text-[#8a5348] mt-2 inline-flex items-center gap-0.5">🔍 查看回程機位配置圖<span class="font-normal">↗</span></a>`
+                ? `<a href="${escapeHtml(departureSeatMapUrl)}" target="_blank" rel="noopener noreferrer" class="text-[11px] font-bold text-[#a8695c] hover:text-[#8a5348] mt-2 inline-flex items-center gap-0.5 underline">🔍 查看回程機位配置圖<span class="font-normal">↗</span></a>`
                 : '';
             const endingBlock = currentDepartureFlight
                 ? `
