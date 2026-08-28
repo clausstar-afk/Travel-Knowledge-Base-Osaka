@@ -95,6 +95,17 @@
             scrollbar-width: none;
         }
 
+        /* 🔒 全站共用的「收合/展開」按鈕樣式：航班表單標題旁、每個 Day 標題旁都用同一套，
+           使用者要求視覺要一致、夠明顯（原本 28×28px 純圖示按鈕太不顯眼）。有文字標籤＋圖示，
+           不是只有小箭頭 */
+        .collapse-toggle-btn {
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            height: 2rem; padding: 0 0.75rem; border-radius: 0.5rem;
+            font-size: 0.75rem; font-weight: 700; color: #5c7a8a;
+            background: #dde7ea; transition: background-color 0.15s ease;
+        }
+        .collapse-toggle-btn:hover { background: #c3d3d9; }
+
         /* 🔒 使用者實測回報：進站/重新整理時畫面會自己慢慢往下捲，捲到最下面——這是瀏覽器內建的
            「scroll anchoring」在作祟：畫面上方的內容陸續非同步載入完成時（骨架屏換成真的卡片、
            天氣徽章冒出來、健檢內容從 LocalStorage 還原……），瀏覽器會自動微調捲動位置想維持
@@ -393,13 +404,18 @@
                 <h3 class="hand text-sm font-bold text-[#37505f] flex items-center gap-2">
                     <span>✈️</span> 輸入航班資訊
                 </h3>
+                <!-- 🔒 使用者實測回報原本 28×28px 純圖示按鈕不夠明顯，改成有文字標籤的膠囊按鈕，
+                     字級/尺寸/配色訂為全站「收合/展開」按鈕的共用樣式（我的行程每個 Day 標題旁邊
+                     新增的收合按鈕也套用同一套 class，見下方 generateDynamicTimeline） -->
                 <button onclick="toggleFlightForm()" id="flight-form-toggle-btn" title="收合/展開航班表單"
-                    class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[#5c7a8a] hover:bg-[#dde7ea] transition">
-                    <span id="flight-form-toggle-icon" class="text-xs">▾</span>
+                    class="collapse-toggle-btn shrink-0">
+                    <span id="flight-form-toggle-icon">▾</span>
+                    <span id="flight-form-toggle-label">收合</span>
                 </button>
             </div>
-            <!-- 收合狀態下的摘要行，展開時隱藏 -->
-            <p id="flight-form-summary" class="hidden text-xs font-medium text-[#37505f]"></p>
+            <!-- 收合狀態下的摘要，展開時隱藏。使用者要求拿掉圖示跟「已同步航班資訊」這句話，
+                 改成去程/回程各自一行的條列文字，手機窄螢幕不會像塞成一行那樣容易溢出 -->
+            <div id="flight-form-summary" class="hidden text-xs font-medium text-[#37505f] space-y-1"></div>
             <div id="flight-form-body">
                 <!-- 去程/回程選擇：決定插入時間軸的最前面還是最後面。
                      給這排加上 id，是因為 Hero「我有航班資訊了」按鈕改成直接捲到這裡（而不是整個 flight-section
@@ -693,6 +709,14 @@
         let dayStartTimes = {};        // { 1: '09:30', 2: '10:00', ... } 每天的出發時間，使用者可自行調整
         let stayOverrides = {};        // { itemId: 分鐘數 } 使用者手動調整過的個別景點停留時間，沒被調整過的景點不會出現在這裡（維持用 item.stay 建議值）
         const expandedStayEditIds = new Set(); // 目前正在展開停留時間調整介面的景點 id（純畫面狀態，不儲存、不跨帳號保留）
+        // 🔒 使用者要求：每天標題旁新增收合/展開按鈕，視覺跟航班表單的收合按鈕一致（.collapse-toggle-btn）。
+        // 純畫面狀態，不存 LocalStorage，用 Set 記錄目前收合的天數（存天數編號，不是景點 id）
+        const collapsedDayIndices = new Set();
+        function toggleDayCollapse(d) {
+            if (collapsedDayIndices.has(d)) collapsedDayIndices.delete(d);
+            else collapsedDayIndices.add(d);
+            generateDynamicTimeline();
+        }
 
         // 🌤️ 大阪天氣預報（Open-Meteo，免金鑰、免費），確定去程日期後自動查詢
         let weatherByDate = {};        // { 'YYYY-MM-DD': { code, max, min } }
@@ -1012,24 +1036,29 @@
             const [, m, d] = isoDate.split('-');
             return `${parseInt(m, 10)}/${parseInt(d, 10)}`;
         }
+        // 🔒 使用者要求：收合摘要拿掉圖示跟「已同步航班資訊」這句話，改成去程/回程各自一行的條列文字
+        // （手機窄螢幕塞成一行容易溢出），按鈕也要有文字（收合/展開），不能只有一個小箭頭
         function renderFlightFormCollapseState() {
             const body = document.getElementById('flight-form-body');
             const summary = document.getElementById('flight-form-summary');
             const icon = document.getElementById('flight-form-toggle-icon');
-            if (!body || !summary || !icon) return;
+            const label = document.getElementById('flight-form-toggle-label');
+            if (!body || !summary || !icon || !label) return;
             if (isFlightFormCollapsed) {
                 body.classList.add('hidden');
                 icon.textContent = '▸';
-                const parts = [];
-                if (currentArrivalFlight) parts.push(`去程 ${escapeHtml(currentArrivalFlight.number)}・${shortDateLabel(currentArrivalQueryDate)} 抵達`);
-                if (currentDepartureFlight) parts.push(`回程 ${escapeHtml(currentDepartureFlight.number)}・${shortDateLabel(currentDepartureQueryDate)} 起飛`);
-                summary.innerHTML = parts.length > 0
-                    ? `✈️ 已同步航班資訊 — ${parts.join('　·　')}`
-                    : '✈️ 尚未查詢航班資訊，點右上角展開輸入';
+                label.textContent = '展開';
+                const lines = [];
+                if (currentArrivalFlight) lines.push(`• 去程航班 ${escapeHtml(currentArrivalFlight.number)}　${shortDateLabel(currentArrivalQueryDate)}`);
+                if (currentDepartureFlight) lines.push(`• 回程航班 ${escapeHtml(currentDepartureFlight.number)}　${shortDateLabel(currentDepartureQueryDate)}`);
+                summary.innerHTML = lines.length > 0
+                    ? lines.map(l => `<div>${l}</div>`).join('')
+                    : '<div>尚未查詢航班資訊，點右側「展開」輸入</div>';
                 summary.classList.remove('hidden');
             } else {
                 body.classList.remove('hidden');
                 icon.textContent = '▾';
+                label.textContent = '收合';
                 summary.classList.add('hidden');
             }
         }
@@ -1182,6 +1211,31 @@
             clearTimeout(chatFabScrollTimer);
             chatFabScrollTimer = setTimeout(() => wrap.classList.remove('is-scrolling'), 350);
         }, { passive: true });
+
+        // 🖱️ 拖曳時靠近畫面上/下緣自動捲動（類似 Notion 資料庫拖曳體驗）：使用者實測回報拖曳景點卡片時
+        // 畫面不會跟著捲動，卡片拖到畫面邊緣就卡住了，尤其手動排程行程表天數一多、卡片一多，光靠原本
+        // 可視範圍完全不夠用。監聽全域 dragover，游標靠近視窗頂部/底部一定範圍內就用 setInterval 持續
+        // 呼叫 window.scrollBy() 捲動，離開範圍或放開/取消拖曳就停止。只對桌面滑鼠拖曳有效——手機原生
+        // 不支援 HTML5 拖放（這個限制不是這次新增的，全站排序功能在手機上本來就是靠方向按鈕，不是拖曳）。
+        let dragAutoScrollInterval = null;
+        function stopDragAutoScroll() {
+            if (dragAutoScrollInterval) { clearInterval(dragAutoScrollInterval); dragAutoScrollInterval = null; }
+        }
+        document.addEventListener('dragover', (e) => {
+            const EDGE_ZONE = 80; // 距離視窗上/下緣多少 px 內開始自動捲動
+            const MAX_SPEED = 16; // 最靠近邊緣時每次捲動的 px 數
+            const y = e.clientY;
+            const vh = window.innerHeight;
+            let speed = 0;
+            if (y < EDGE_ZONE) speed = -MAX_SPEED * (1 - y / EDGE_ZONE);
+            else if (y > vh - EDGE_ZONE) speed = MAX_SPEED * (1 - (vh - y) / EDGE_ZONE);
+            stopDragAutoScroll();
+            if (speed !== 0) {
+                dragAutoScrollInterval = setInterval(() => window.scrollBy(0, speed), 16);
+            }
+        });
+        document.addEventListener('dragend', stopDragAutoScroll);
+        document.addEventListener('drop', stopDragAutoScroll);
 
         // 初始化 Initialization
         // ⌨️ 按 Esc 關閉目前開著的浮動視窗（聊天面板／匯出/行前清單 Modal），符合桌面使用者的直覺操作習慣。
@@ -1633,13 +1687,16 @@
         function handleContainerDrop(e, dayIndex) {
             e.preventDefault();
             if (!draggedItemId) return;
+            // 🔒 使用者要求：拖曳只保留「已排定的天數之間」跟「同一天內重新排序」，未分配區不參與拖曳——
+            // 從未分配區排進某一天改用小卡片上的「排入天數」下拉選單（更明確，不會手滑錯放）；
+            // 從某一天移出退回未分配區則用卡片上的「移出」按鈕。這裡直接擋掉任何牽涉到未分配區
+            // （目標是未分配區，或拖曳的項目本身還在未分配區）的拖放，放開時直接沒有動作
             const wasUnassigned = unassignedIds.includes(draggedItemId);
+            if (dayIndex === 0 || wasUnassigned) { draggedItemId = null; return; }
             removeFromAllDaySlots(draggedItemId);
-            if (dayIndex === 0) unassignedIds.push(draggedItemId);
-            else dayPlan[dayIndex - 1].push(draggedItemId);
+            dayPlan[dayIndex - 1].push(draggedItemId);
             draggedItemId = null;
             saveDayPlan();
-            if (wasUnassigned && dayIndex !== 0) maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
@@ -1652,20 +1709,20 @@
             e.preventDefault();
             e.stopPropagation();
             if (!draggedItemId || draggedItemId === targetItemId) return;
-            const list = dayIndex === 0 ? unassignedIds : dayPlan[dayIndex - 1];
+            // 🔒 同上：拖曳只保留已排定天數之間跟同一天內重排，未分配區不參與拖曳（見 handleContainerDrop 說明）
+            const wasUnassigned = unassignedIds.includes(draggedItemId);
+            if (dayIndex === 0 || wasUnassigned) { draggedItemId = null; return; }
+            const list = dayPlan[dayIndex - 1];
             const draggedOriginalIdx = list.indexOf(draggedItemId);
             const targetOriginalIdx = list.indexOf(targetItemId);
             const insertAfter = draggedOriginalIdx !== -1 && draggedOriginalIdx < targetOriginalIdx;
 
-            // 🔒 同理只在「從未分配區排進某一天」時才提醒健檢，同天重排／換天不算
-            const wasUnassigned = unassignedIds.includes(draggedItemId);
             removeFromAllDaySlots(draggedItemId);
             const targetIdx = list.indexOf(targetItemId);
             const insertIdx = targetIdx === -1 ? list.length : (insertAfter ? targetIdx + 1 : targetIdx);
             list.splice(insertIdx, 0, draggedItemId);
             draggedItemId = null;
             saveDayPlan();
-            if (wasUnassigned && dayIndex !== 0) maybeNudgeHealthCheck();
             generateDynamicTimeline();
         }
 
@@ -1952,18 +2009,20 @@ ${list}
             // 特別容易感覺卡頓／遲鈍，換成一開始就有動靜的曲線比較符合「按了立刻有反應」的直覺
             const ease = t => 1 - Math.pow(1 - t, 3);
             // 🔒 目標元素若剛從隱藏切換成可見（例如切頁籤時），本身可能還在播放「進場往上浮動」的 CSS 動畫
-            // （transform 位移，見 .reveal／.reveal-hero），量到的位置在動畫播完之前會變動。但每一影格都
-            // 呼叫 getBoundingClientRect() 重新量測會強制觸發瀏覽器同步重排（layout thrashing）——
-            // 900ms 的動畫在 60fps 下等於強制重排快 60 次，這是使用者感覺到的「不順」的另一個成因。
-            // 改成只在動畫開始後 150ms（進場動畫這時通常已經播完大半、位置趨於穩定）重新量測校正「一次」，
-            // 之後全程用這個校正過的終點，兼顧「目標還在動也能精準落地」跟「捲動過程不因為重排而頓」。
-            let hasRecalibrated = false;
+            // （transform 位移，見 .reveal／.reveal-hero，時間長達 1s），量到的位置在動畫播完之前持續變動。
+            // 但每一影格都呼叫 getBoundingClientRect() 重新量測會強制觸發瀏覽器同步重排（layout thrashing），
+            // 900ms 動畫在 60fps 下等於強制重排快 60 次，是「不順」的成因之一——上一版只在 150ms 校正「一次」，
+            // 但進場動畫要 1s 才播完，150ms 時多半還在動畫中途，校正到的還是個過渡位置，不是真正的終點，
+            // 導致使用者實測仍會捲到偏下面的位置。改成每 4 影格（約 64ms）才重新量測一次，頻率夠密可以持續
+            // 跟上 1s 進場動畫的變化，重排次數只有原本每影格都測的 1/4，且無論如何最後一影格（progress
+            // 到 1 之前）一定會強制重新量測一次，確保真正落地的終點永遠是當下最新、最準的位置。
+            let frameCount = 0;
             function step(now) {
                 const elapsed = now - startTime;
                 const progress = Math.min(elapsed / duration, 1);
-                if (!hasRecalibrated && elapsed > 150) {
+                frameCount++;
+                if (frameCount % 4 === 0 || progress >= 1) {
                     targetY = computeTargetY();
-                    hasRecalibrated = true;
                 }
                 const distance = targetY - startY;
                 window.scrollTo(0, startY + distance * ease(progress));
@@ -3313,7 +3372,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                 showToast('Kinopio 潤飾文字時迷路了，先顯示原始健檢結果', false);
             } finally {
                 isRunningHealthCheck = false;
-                if (btn) { btn.disabled = false; btn.textContent = '🩺 幫我健檢＋整趟提醒'; }
+                if (btn) { btn.disabled = false; btn.textContent = '🩺 行程健檢與提醒'; }
                 generateDynamicTimeline();
             }
         }
@@ -3449,19 +3508,17 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             generateDynamicTimeline();
         }
 
-        // 渲染「未分配」區的小卡片（可拖曳，也提供一鍵排入 Day1 按鈕方便手機使用者）
+        // 渲染「未分配」區的小卡片：排入某一天一律透過下拉選單（見下方大註解）
         function renderUnassignedChip(item) {
             const dayOptions = Array.from({ length: dayCount }, (_, i) => i + 1)
                 .map(d => `<option value="${d}">排入 Day${d}</option>`).join('');
             const safeName = escapeHtml(item.name);
             const jsAttrName = escapeJsAttr(item.name);
+            // 🔒 使用者要求：拖曳只保留「已排定天數之間」跟「同一天內重排」，未分配區的小卡片不再能拖曳
+            // （原本可以拖進某一天，現在只能用「排入天數」下拉選單），拿掉 draggable／拖曳相關屬性跟
+            // 拖曳把手圖示，避免使用者抓著拖卻沒有任何反應
             return `
-                <div class="flex items-center gap-2 bg-[#faf6ee] border border-[#d8cba8] rounded-xl px-3 py-2 shadow-sm cursor-grab active:cursor-grabbing"
-                     draggable="true"
-                     ondragstart="handleCardDragStart(event, '${item.id}')"
-                     ondragover="event.preventDefault()"
-                     ondrop="handleCardDrop(event, 0, '${item.id}')">
-                    <span class="text-slate-300 text-xs select-none">⠿</span>
+                <div class="flex items-center gap-2 bg-[#faf6ee] border border-[#d8cba8] rounded-xl px-3 py-2 shadow-sm">
                     <span class="text-xs font-bold text-slate-700">${safeName}</span>
                     <select onchange="moveItemToDay('${item.id}', parseInt(this.value, 10))" class="text-[11px] text-[#2c5f7c] font-bold bg-transparent border-none ml-1 focus:outline-none">
                         <option value="" selected disabled>排入天數 ▶</option>
@@ -3612,13 +3669,11 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                         <p class="text-xs text-slate-500 flex items-center flex-wrap">${metaLine}</p>
                         ${stayOverrideNote}
                         ${warningBlock}
-                        <div class="flex items-start gap-3 pt-3 border-t border-[#f5ecd9]">
-                            <!-- 🔒 手機實測發現：門票／營業時間文字長一點（例如「依店家而定」）會擠成兩行，
-                                 原本用單行 inline-flex 徽章硬塞「門票：X・營業時間：Y」，兩行文字擠進圓角膠囊
-                                 形狀的徽章裡本來就不好看，父層還用 items-center 把右側地圖/網站按鈕垂直置中，
-                                 兩行文字一撐高，按鈕就會浮在文字中間、對不齊。改成固定拆成「門票」「營業時間」
-                                 各自一行的小區塊，一開始就是設計成可以兩行顯示，不會有徽章形狀跑掉的問題；
-                                 父層改成 items-start，按鈕改成貼齊區塊頂部，不管文字幾行都維持整齊對齊 -->
+                        <div class="flex items-center gap-3 pt-3 border-t border-[#f5ecd9]">
+                            <!-- 🔒 這裡的排版邏輯：門票／營業時間已經改成固定拆成兩行的小區塊（不是原本會
+                                 不定形換行的單行膠囊徽章），高度已經可預期穩定，不會再有「不定形換行讓按鈕
+                                 浮在文字中間」的舊問題。使用者要求地圖/官網按鈕改回垂直置中、隨區塊高度彈性
+                                 調整（而不是貼齊頂部），改回 items-center，讓按鈕永遠對齊在文字區塊的垂直中心 -->
                             <div class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-[#f5ecd9] text-[#6b5535] text-xs font-bold space-y-0.5">
                                 <div><span class="font-normal text-[#8a7a5c]">門票</span> ${safeTicket}</div>
                                 <div><span class="font-normal text-[#8a7a5c]">營業時間</span> ${safeHours || '請見官網'}</div>
@@ -3631,22 +3686,33 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                     </div>
                     <!-- 🖐️ 手機無法用原生拖曳排序（HTML5 drag-and-drop 觸控裝置大多不支援），
                          這排按鈕才是手機使用者實際會用到的排序方式，特意放大到接近 44px 的觸控友善尺寸。
-                         🔒 使用者實測回報：原本用分隔線＋文字說明把四顆按鈕拆成兩群、「移出」又用 ml-auto
-                         推到最右邊，四種功能造型/間距各自不同，視覺落差太大。改成五顆按鈕統一造型跟尺寸
-                         （同樣 rounded-lg、同樣高度、同樣 padding），依序排在同一排、間距一致，改用顏色
-                         深淺區分語意：同天排序（↑↓）中性米灰、換天（◀▶）淺珊瑚色、移出待排清單淺藍灰色，
-                         三種顏色互相都有明顯區隔，不會混淆；拿掉文字說明，靠 title 屬性 hover/長按提示 -->
+                         🔒 使用者實測回報兩點：① 五顆按鈕攤平在同一排，手機窄螢幕會橫向溢出跑版；
+                         ② 拿掉文字說明後看不出來按鈕在做什麼，希望說明字加回來。改回分組結構（↑↓ 一組、
+                         ◀▶ 一組、下面各自置中一行說明字，兩組中間用分隔線隔開，比五顆攤平窄，手機不會
+                         溢出），但保留上一版新增的顏色分語意：同天排序（↑↓）中性米灰、換天（◀▶）淺珊瑚色、
+                         移出待排清單淺藍灰色，三種顏色互相都有明顯區隔 -->
                     <div class="flex items-center gap-2 mt-3 pt-3 border-t border-[#f5ecd9] flex-wrap">
-                        <button onclick="moveItemWithinDay('${item.id}', -1)" ${idx === 0 ? 'disabled' : ''} title="同天內往前移"
-                            class="h-9 min-w-[2.75rem] px-3 text-sm font-bold rounded-lg border transition ${idx === 0 ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}">↑</button>
-                        <button onclick="moveItemWithinDay('${item.id}', 1)" ${idx === total - 1 ? 'disabled' : ''} title="同天內往後移"
-                            class="h-9 min-w-[2.75rem] px-3 text-sm font-bold rounded-lg border transition ${idx === total - 1 ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}">↓</button>
-                        <button onclick="moveItemDay('${item.id}', -1)" ${dayIndex <= 1 ? 'disabled' : ''} title="移到前一天"
-                            class="h-9 min-w-[2.75rem] px-3 text-sm font-bold rounded-lg border transition ${dayIndex <= 1 ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-[#a8695c] border-[#e8c9c2] bg-[#f6e9e6] hover:bg-[#f0dcd6] active:bg-[#e8c9c2]'}">◀</button>
-                        <button onclick="moveItemDay('${item.id}', 1)" ${dayIndex >= dayCount ? 'disabled' : ''} title="移到後一天"
-                            class="h-9 min-w-[2.75rem] px-3 text-sm font-bold rounded-lg border transition ${dayIndex >= dayCount ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-[#a8695c] border-[#e8c9c2] bg-[#f6e9e6] hover:bg-[#f0dcd6] active:bg-[#e8c9c2]'}">▶</button>
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="flex items-center gap-1">
+                                <button onclick="moveItemWithinDay('${item.id}', -1)" ${idx === 0 ? 'disabled' : ''} title="同天內往前移"
+                                    class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border transition ${idx === 0 ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}">↑</button>
+                                <button onclick="moveItemWithinDay('${item.id}', 1)" ${idx === total - 1 ? 'disabled' : ''} title="同天內往後移"
+                                    class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border transition ${idx === total - 1 ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-slate-600 border-[#d8cba8] bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8]'}">↓</button>
+                            </div>
+                            <span class="text-[11px] text-slate-400 font-medium">同天排序</span>
+                        </div>
+                        <span class="w-px h-8 bg-[#d8cba8] shrink-0"></span>
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="flex items-center gap-1">
+                                <button onclick="moveItemDay('${item.id}', -1)" ${dayIndex <= 1 ? 'disabled' : ''} title="移到前一天"
+                                    class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border transition ${dayIndex <= 1 ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-[#a8695c] border-[#e8c9c2] bg-[#f6e9e6] hover:bg-[#f0dcd6] active:bg-[#e8c9c2]'}">◀</button>
+                                <button onclick="moveItemDay('${item.id}', 1)" ${dayIndex >= dayCount ? 'disabled' : ''} title="移到後一天"
+                                    class="min-w-[2.2rem] h-9 px-2 text-sm font-bold rounded-lg border transition ${dayIndex >= dayCount ? 'text-[#d8cba8] border-[#e8dcc8] bg-[#faf6ee]' : 'text-[#a8695c] border-[#e8c9c2] bg-[#f6e9e6] hover:bg-[#f0dcd6] active:bg-[#e8c9c2]'}">▶</button>
+                            </div>
+                            <span class="text-[11px] text-slate-400 font-medium">換天</span>
+                        </div>
                         <button onclick="moveItemDay('${item.id}', ${-dayIndex})" title="移出這一天，退回未分配區"
-                            class="h-9 px-3 text-sm font-bold rounded-lg border transition text-[#5c7a8a] border-[#c3d3d9] bg-[#eaf1f4] hover:bg-[#dde7ea] active:bg-[#c3d3d9]">移出</button>
+                            class="h-9 px-3 text-xs font-bold rounded-lg border transition text-[#5c7a8a] border-[#c3d3d9] bg-[#eaf1f4] hover:bg-[#dde7ea] active:bg-[#c3d3d9]">移出</button>
                     </div>
                 </div>
             `;
@@ -3681,11 +3747,13 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
 
             // 📥 未分配區：放在「Kinopio 風格輸入」跟「手動排程行程表」之間，一進「我的行程」頁籤
             // 就先看到還沒排的待辦清單，再往下才是已經排好的正式行程
+            // 🔒 使用者要求：① 標題文字改成「我的行程」；② 拖曳只保留已排定天數之間跟同天內重排，
+            // 未分配區不再是拖放目標，拿掉這裡的 ondragover/ondrop；③ 提示文字改成「剩餘 X 個」
+            // （X＝還沒排進任何一天的景點數量），取代原本教使用者拖曳的說明文字
             let timelineHTML = `
-                <div class="bg-[#f5ecd9] border-2 border-dashed border-[#d8cba8] rounded-2xl p-4 mt-6 mb-6"
-                     ondragover="event.preventDefault()" ondrop="handleContainerDrop(event, 0)">
+                <div class="bg-[#f5ecd9] border-2 border-dashed border-[#d8cba8] rounded-2xl p-4 mt-6 mb-6">
                     <div class="text-xs font-bold text-slate-500 mb-3">
-                        📥 尚未排入任何一天${unassignedIds.length === 0 ? '<span class="text-[#7fa382] font-normal ml-1">・全部景點都已排好囉！</span>' : '（拖曳景點卡片到下方對應的 Day 裡）'}
+                        📥 我的行程${unassignedIds.length === 0 ? '<span class="text-[#7fa382] font-normal ml-1">・全部景點都已排好囉！</span>' : `<span class="text-slate-400 font-normal ml-1">（剩餘 ${unassignedIds.length} 個）</span>`}
                     </div>
                     <div class="flex flex-wrap gap-2 min-h-[2rem]">
                         ${unassignedIds.map(id => byId[id] ? renderUnassignedChip(byId[id]) : '').join('')}
@@ -3712,7 +3780,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                             <button onclick="runHealthCheck()" id="health-check-btn"
                                 class="h-9 px-3 rounded-xl bg-[#e3dae8] hover:bg-[#cab8d4] active:bg-[#9678a5] text-[#564865] text-xs font-bold transition whitespace-nowrap"
                                 title="生成整趟行程的步調分析、天氣提醒與打包建議，每天最多 ${HEALTH_CHECK_DAILY_LIMIT} 次">
-                                🩺 幫我健檢＋整趟提醒
+                                🩺 行程健檢與提醒
                             </button>
                             <span class="text-[10.5px] text-slate-400 font-medium whitespace-nowrap">每天最多 ${HEALTH_CHECK_DAILY_LIMIT} 次</span>
                         </div>
@@ -3778,7 +3846,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                     <div class="bg-[#eef3f5] border border-[#dde7ea] rounded-2xl p-4">
                         <div class="text-xs font-bold text-[#37505f] mb-1">🛬 航班 ${escapeHtml(currentArrivalFlight.number)} 抵達</div>
                         <div class="text-sm font-bold text-slate-800">${escapeHtml(currentArrivalFlight.airport)}｜${escapeHtml(currentArrivalFlight.time)}（日本當地時間）</div>
-                        <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentArrivalFlight.model)}（時間僅供參考，請以航空公司公告為準）</div>
+                        <div class="text-[11px] text-slate-400 mt-1">機型：${escapeHtml(currentArrivalFlight.model)}（時間及機型僅供參考，請以航空公司公告為準）</div>
                         ${warnBlock}
                         ${arrivalSeatMapLink}
                     </div>
@@ -3845,14 +3913,30 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                             <div class="hand bg-[#eaf1f4] text-[#1a3a4a] px-4 py-1.5 rounded-xl text-xs font-bold shadow-sm">
                                 ${dayLabel}
                             </div>
+                            <!-- 🔒 使用者要求：Day 標籤右方新增收合/展開按鈕，視覺跟航班表單的收合按鈕一致
+                                 （共用 .collapse-toggle-btn），長行程往下滑可以先收合不需要看的天數 -->
+                            <button onclick="toggleDayCollapse(${d})" class="collapse-toggle-btn" title="收合/展開這一天">
+                                <span>${collapsedDayIndices.has(d) ? '▸' : '▾'}</span>
+                                <span>${collapsedDayIndices.has(d) ? '展開' : '收合'}</span>
+                            </button>
                         </div>
-                        <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <!-- 🔒 收合這一天時，把出發時間/天氣/日落/景點清單整塊隱藏，只留 Day 標題列本身，
+                             長行程往下滑動時可以先收掉不需要看的天數，縮短捲動距離 -->
+                        <div class="${collapsedDayIndices.has(d) ? 'hidden' : ''}">
+                        <!-- 🔒 使用者實測回報：這排在手機上會橫向溢出跑版——原生 <input type="time"> 在部分
+                             手機瀏覽器的實際渲染寬度比桌面版寬很多（原生時間選擇器的元件寬度不受 CSS width
+                             控制），這個沙盒測試環境用桌面引擎模擬手機尺寸沒辦法重現這個落差，只能用結構上
+                             的方式保底：改成 flex-col（手機）/sm:flex-row（桌面），出發時間輸入框在手機上
+                             獨佔一行，不管原生元件實際渲染多寬都不會擠壓天氣/日落徽章的空間、拖著一起溢出 -->
+                        <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-2">
                             <label class="flex items-center gap-1 text-[11px] text-slate-500 font-bold">
                                 🚩 出發
                                 <input type="time" value="${escapeHtml(currentStart)}" ${earliestStart ? `min="${escapeHtml(earliestStart)}"` : ''} onchange="setDayStartTime(${d}, this.value)" class="border ${startTooEarly ? 'border-amber-400' : 'border-[#d8cba8]'} rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
                             </label>
-                            ${weatherBadge}
-                            ${sunsetBadge}
+                            <div class="flex items-center gap-2 flex-wrap">
+                                ${weatherBadge}
+                                ${sunsetBadge}
+                            </div>
                         </div>
                         <!-- 📝 AI 小語獨立一行放在標題列下方，不再塞進 Day 徽章裡——徽章塞進一整句話會被撐得又寬又不固定，
                              跟天氣/日落徽章擠在同一個自動換行的橫排裡，長度一撐大就會把天氣/日落擠到下一行 -->
@@ -3874,7 +3958,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                                     const connectorHTML = transitMin !== null ? `
                                         <div class="flex items-center gap-2 flex-wrap pl-1 text-[11px] text-slate-500 font-medium">
                                             <span class="text-[#5c7a8a]">⬇️</span>
-                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🚃 預估交通約 ${transitMin} 分鐘（${escapeHtml(getMainAreaKey(item.area))} → ${escapeHtml(getMainAreaKey(nextItem.area))}）</span>
+                                            <span class="bg-[#f5ecd9] border border-[#e8dcc8] px-2.5 py-1 rounded-lg">🚃 預估交通時間約 <span class="font-bold text-slate-700">${transitMin}</span> 分鐘（僅供參考）</span>
                                             <a href="${getTransitDirectionsUrl(item, nextItem)}" target="_blank" rel="noopener noreferrer"
                                                class="inline-flex items-center gap-1 font-bold text-[#5c7a8a] bg-[#eef3f5] hover:bg-[#dde7ea] border border-[#c3d3d9] rounded-full px-2.5 py-1 transition">
                                                 🔍 查看交通方式<span class="text-slate-400 font-normal">↗</span>
@@ -3883,6 +3967,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                                     ` : '';
                                     return cardHTML + connectorHTML;
                                 }).join('')}
+                        </div>
                         </div>
                     </div>
                 `;
