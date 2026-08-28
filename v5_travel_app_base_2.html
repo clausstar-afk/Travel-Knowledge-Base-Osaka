@@ -1631,6 +1631,15 @@
                 generateDynamicTimeline();
                 return;
             }
+            // 🛫 使用者要求：最後一天的結束時間跟 Day 1 出發時間比照同一套邏輯——不能晚於回程航班起飛
+            // 時間（不然來不及到機場），超過就自動修正回起飛時間，不只是掛警示文字而已
+            if (d === dayCount) {
+                const latestEnd = getDepartureFlightTime();
+                if (latestEnd && clockToMinutes(value) > clockToMinutes(latestEnd)) {
+                    value = latestEnd;
+                    showToast('結束時間不能晚於回程航班起飛時間，已自動改回起飛時間', true, '🛡️');
+                }
+            }
             const startTime = getDayStartTime(d);
             if (clockToMinutes(value) <= clockToMinutes(startTime)) {
                 showToast('結束時間不能早於或等於出發時間，請重新設定', false, '🛡️');
