@@ -2448,7 +2448,15 @@ ${list}
                         <div class="relative">
                             <button onclick="scrollRail(this, -1)" title="往左看"
                                 class="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-8 h-8 rounded-full border border-[#d8cba8] bg-[#faf6ee] items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] shadow-md transition">‹</button>
-                            <div class="rail-track flex gap-3 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0" style="scroll-snap-type:x proximity;">
+                            <!-- 🔒 使用者實測回報：手機上這排卡片第一張直接貼齊螢幕邊緣，沒有留白，已加入
+                                 行程的綠光效果會被裁掉一邊——追查後發現是已知的 CSS 特性：橫向捲動容器
+                                 同時有 padding-left 又有 scroll-snap-type 時，部分瀏覽器初始化時會把
+                                 padding-left 直接當成已經捲動掉的距離（實測量到 scrollLeft 剛好等於
+                                 padding-left 的 16px），導致第一張卡片視覺上完全貼齊邊緣。原本用
+                                 -mx-4 px-4 讓這排卡片跟外層版面邊界對齊又能左右滑到滿版，改成完全拿掉這組
+                                 抵銷用的 margin/padding，直接沿用外層 <main> 本來就有的 px-4 留白，
+                                 從根本避開這個 padding + scroll-snap 的已知交互問題 -->
+                            <div class="rail-track flex gap-3 overflow-x-auto no-scrollbar pb-1" style="scroll-snap-type:x proximity;">
                                 ${items.map(buildAttractionBrowseCardHTML).join('')}
                             </div>
                             <button onclick="scrollRail(this, 1)" title="往右看"
@@ -4092,6 +4100,17 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             const timelineContainer = document.getElementById('timeline-container');
             if (!timelineContainer) return;
 
+            // 🔒 使用者實測回報：手機上打完 4 碼時間數字自動送出後，畫面會整個跳走、捲動回到健檢提醒
+            // 那一區——根因是這裡整個 innerHTML 都被換掉，正在輸入的欄位跟著被銷毀、失去焦點，手機
+            // 虛擬鍵盤收起來的動畫/reflow 常常會順便把捲動位置也重算掉。先記住目前的捲動位置，換完
+            // innerHTML 後立刻還原一次；鍵盤收合的動畫有時候會在瀏覽器自己的排程裡「晚一點」才把畫面
+            // 捲走，單靠同步還原蓋不掉，用 requestAnimationFrame 延遲一影格後再蓋一次保險。
+            const scrollYBeforeRender = window.scrollY;
+            const restoreScrollPosition = () => {
+                window.scrollTo(0, scrollYBeforeRender);
+                requestAnimationFrame(() => window.scrollTo(0, scrollYBeforeRender));
+            };
+
             // 0. 防禦性清理：確保 dayPlan/未分配清單跟目前的行程/資料源同步
             pruneDayPlan();
 
@@ -4108,6 +4127,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                         <p class="text-xs mt-1 text-slate-400">請先在上方卡片點擊「＋ 加入我的行程」吧！</p>
                     </div>
                 `;
+                restoreScrollPosition();
                 return;
             }
 
@@ -4437,6 +4457,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             `;
 
             timelineContainer.innerHTML = timelineHTML;
+            restoreScrollPosition();
         }
     </script>
 </body>
