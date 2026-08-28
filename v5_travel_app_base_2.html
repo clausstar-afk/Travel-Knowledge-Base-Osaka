@@ -332,7 +332,7 @@
                             <span>🍄</span> Kinopio
                         </button>
                     </div>
-                    <p class="mt-1.5 text-[11px] text-slate-400">輸入文字即時篩選關鍵字，點 🍄 Kinopio 給你其他靈感（結果可能不同）</p>
+                    <p id="ai-search-hint" class="mt-1.5 text-[11px] text-slate-400">輸入文字即時篩選關鍵字，點 🍄 Kinopio 給你其他靈感（結果可能不同）</p>
                     <p id="ai-search-status" class="hidden mt-1.5 text-[11px] text-[#6b5a7a] font-bold items-center gap-2"></p>
                 </div>
             </div>
@@ -472,6 +472,7 @@
                     </button>
                 </div>
                 <p id="flight-date-warning" class="text-[11px] text-amber-600 mt-1 hidden"></p>
+                <p id="flight-lookup-hint" class="text-[11px] text-slate-400 mt-1"></p>
                 <p id="flight-lookup-status" class="text-[11px] text-[#5c7a8a] mt-2"></p>
             </div>
         </div>
@@ -1323,6 +1324,15 @@
             loadChecklistState();
             loadFlightInfo(); // ✈️ 還原之前查詢過的航班資訊，避免重新整理後航班卡片憑空消失
             updateFlightDateConstraints();
+            // 🔒 使用者發現：健檢按鈕主動揭露「每天最多 5 次」，但查詢航班／Kinopio 搜尋這兩個同樣有
+            // 每日次數限制的功能完全沒有提示，要真的點到上限才會看到。討論後決定補上，但不碰按鈕本身
+            // （Kinopio 是絕對定位的固定高度膠囊按鈕、查詢航班按鈕跟輸入框用 sm:items-end 底部對齊，
+            // 硬塞第二行字都會破版），改成接在旁邊本來就有的靜態提示文字後面，版面風險是 0。
+            // 直接引用 AI_SEARCH_DAILY_LIMIT／FLIGHT_LOOKUP_DAILY_LIMIT 常數，之後調整上限數字文字會自動同步
+            document.getElementById('ai-search-hint').textContent =
+                `輸入文字即時篩選關鍵字，點 🍄 Kinopio 給你其他靈感（結果可能不同，每天最多 ${AI_SEARCH_DAILY_LIMIT} 次）`;
+            document.getElementById('flight-lookup-hint').textContent =
+                `每天最多可查詢 ${FLIGHT_LOOKUP_DAILY_LIMIT} 次航班資訊（去程/回程合併計算）`;
             restoreFlightStatusDisplay();
             if (currentArrivalFlight || currentDepartureFlight) {
                 fetchOsakaWeather(); // 天氣/日落沒有存起來，還原航班後順便重新查一次
