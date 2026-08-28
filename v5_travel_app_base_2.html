@@ -3786,9 +3786,20 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                      改成用 truncate（overflow:hidden + white-space:nowrap + text-overflow:ellipsis）+
                      固定 max-width，名稱太長就顯示「...」省略號，不會再逼出直排文字；完整名稱補進 title
                      屬性，長按/滑鼠停留還是看得到全名 -->
-                <div class="flex items-center gap-2 bg-[#faf6ee] border border-[#d8cba8] rounded-xl px-3 py-2 shadow-sm">
-                    <span class="text-xs font-bold text-slate-700 truncate max-w-[6rem]" title="${safeName}">${safeName}</span>
-                    <select onchange="moveItemToDay('${item.id}', parseInt(this.value, 10))" class="text-[11px] text-[#2c5f7c] font-bold bg-transparent border-none ml-1 focus:outline-none">
+                <div class="flex items-center gap-2 bg-[#faf6ee] border border-[#d8cba8] rounded-xl px-3 py-2 shadow-sm max-w-full">
+                    <!-- 🔒 使用者實測回報：手機長按 title 屬性看不到完整名稱——title 是滑鼠停留用的桌面
+                         提示，手機觸控裝置大多數瀏覽器根本不支援用長按觸發，是這個屬性天生的限制，不是
+                         沒寫對。改成額外加 onclick，點一下用 toast 彈出完整名稱，手機/桌面都適用；
+                         title 屬性繼續保留給桌面滑鼠停留用，兩者互補 -->
+                    <span class="text-xs font-bold text-slate-700 truncate max-w-[6rem] cursor-pointer" title="${safeName}" onclick="showToast('${jsAttrName}', true, '📍')">${safeName}</span>
+                    <!-- 🔒 使用者實測回報：每個標籤寬度不一致、還超出外層虛線框——根因是 <select> 沒有設定
+                         寬度，部分手機瀏覽器（尤其 Android Chrome）預設會依「選單裡最長的那個 <option>
+                         文字」自動撐開自己的寬度，不是只看目前顯示的文字。上一版把地緣相關度原因＋剩餘時間
+                         塞進每個 option（例如「排入 Day2（同區域：大阪海遊館・剩餘 10 小時 15 分）」），
+                         不同景點湊出的 option 文字長度不同，每張卡片的 select 就被撐成不同寬度。加上明確
+                         的 max-width 蓋掉瀏覽器這個「依最長選項自動撐開」的預設行為，所有卡片的 select
+                         寬度統一固定，不會再互相不一致或撐出外層框框 -->
+                    <select onchange="moveItemToDay('${item.id}', parseInt(this.value, 10))" class="text-[11px] text-[#2c5f7c] font-bold bg-transparent border-none ml-1 focus:outline-none max-w-[110px] truncate">
                         <option value="" selected disabled>排入天數 ▶</option>
                         ${dayOptions}
                     </select>
