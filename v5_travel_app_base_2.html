@@ -1541,9 +1541,12 @@
             generateDynamicTimeline();
         }
 
+        // 🔒 使用者要求 Day 旁邊的日期統一顯示成「xx/xx」補零格式（原本月/日沒補零，8/30 跟 9/2 這種
+        // 長度不一致的日期混在一起，排版看起來不整齊）；拿掉原本的「（週X）」，只保留純日期
         function formatDateLabel(date) {
-            const weekday = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
-            return `${date.getMonth() + 1}/${date.getDate()}（週${weekday}）`;
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const dd = String(date.getDate()).padStart(2, '0');
+            return `${mm}/${dd}`;
         }
 
         function formatDateISO(date) {
