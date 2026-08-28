@@ -1301,6 +1301,10 @@
                 alignBrandTitle();
             }
         });
+        // 🔒 使用者實測回報標題還是有對不齊的情況——document.fonts.ready 在部分行動裝置瀏覽器有時會
+        // 提早 resolve（字型還沒真的套用到畫面排版就先觸發），量到的寬度會不準。window 的 load 事件
+        // 保證這時候整頁（含字型、圖片）都已經真正載入完成，再補跑一次當作保底，確保最終一定是準的
+        window.addEventListener('load', () => setTimeout(alignBrandTitle, 50));
 
         // 🔒 依登入帳號分開儲存行程資料：用 Google 帳號的 sub（這個帳號唯一、穩定的 ID，不會因為
         // 改名字或換大頭貼而變動）當作儲存範圍，未登入時歸類到 'guest'。這樣不同 Google 帳號在
@@ -1574,6 +1578,11 @@
         // <input type="time"> 的 min/max 屬性防呆（部分瀏覽器手動打字/選時間不會被擋下來），
         // 儲存前直接攔截修正，不給無效值存在的機會。
         function setDayEndTime(d, value) {
+            if (!TIME_FORMAT_RE.test(value)) {
+                showToast('請輸入正確的 24 小時制時間格式（例如 22:00）', false, '🛡️');
+                generateDynamicTimeline();
+                return;
+            }
             const startTime = getDayStartTime(d);
             if (clockToMinutes(value) <= clockToMinutes(startTime)) {
                 showToast('結束時間不能早於或等於出發時間，請重新設定', false, '🛡️');
@@ -1604,11 +1613,34 @@
             return h * 60 + m;
         }
 
-        // 🛡️ 真正的防呆：<input type="time" min="..."> 的 min 屬性只在「表單送出驗證」時才生效，
-        // 使用者直接用原生時間選擇器（尤其手機）挑一個更早的時間、或手動打字，瀏覽器並不會擋下來，
-        // onchange 一樣會正常觸發、存進去無效的值——親自測過會發生。單靠 min 屬性 + 事後警示文字，
-        // 使用者還是能存到「人都還沒下飛機」的出發時間。這裡在儲存前直接攔截修正，不給無效值存在的機會。
+        // 🔒 出發/結束時間輸入框改用純文字＋自動格式化（見上方 24 小時制的說明），這裡負責「輸入數字
+        // 自動補冒號」：打 2 碼後自動變成 09: 、打完 4 碼變成 09:30，跟提款機/訂票網站常見的時間輸入
+        // 手感一致，不用使用者自己打冒號
+        function maskTimeInput(input) {
+            const digits = input.value.replace(/\D/g, '').slice(0, 4);
+            if (digits.length <= 2) { input.value = digits; return; }
+            // 打 3-4 碼時：優先當作「兩碼小時＋分鐘」；但前兩碼湊出來的小時不合法（>23）時，
+            // 改當作「使用者省略了小時前面的 0，打了一碼小時＋分鐘」——例如打「930」自動判讀成
+            // 09:30，而不是照原本單純位置切法會變成不合法的「93:0」
+            const twoDigitHour = parseInt(digits.slice(0, 2), 10);
+            const [hourPart, minutePart] = twoDigitHour <= 23
+                ? [digits.slice(0, 2), digits.slice(2)]
+                : [`0${digits.slice(0, 1)}`, digits.slice(1)];
+            input.value = `${hourPart}:${minutePart}`;
+        }
+
+        const TIME_FORMAT_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+        // 🛡️ 真正的防呆：文字輸入框不像原生 <input type="time">，使用者可以打出任何文字（缺冒號、
+        // 超過 23:59、只打半截），這裡先驗證格式合不合法，不合法一律擋下、跳 toast 說明，並把畫面
+        // 重新渲染成目前實際生效的舊值（不會留在畫面上一個沒被存檔的無效字串，使用者不改也不會卡住，
+        // 下次打開頁面看到的一定是最後一次成功儲存的合法時間）
         function setDayStartTime(d, value) {
+            if (!TIME_FORMAT_RE.test(value)) {
+                showToast('請輸入正確的 24 小時制時間格式（例如 09:00）', false, '🛡️');
+                generateDynamicTimeline();
+                return;
+            }
             if (d === 1) {
                 const earliest = getDay1EarliestStartTime();
                 if (earliest && clockToMinutes(value) < clockToMinutes(earliest)) {
@@ -4130,15 +4162,20 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                              的方式保底：改成 flex-col（手機）/sm:flex-row（桌面），出發時間輸入框在手機上
                              獨佔一行，不管原生元件實際渲染多寬都不會擠壓天氣/日落徽章的空間、拖著一起溢出 -->
                         <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-2">
+                            <!-- 🔒 使用者要求一律用 24 小時制呈現：原生 <input type="time"> 顯示成 12/24 小時、
+                                 上午/下午哪種格式，完全是瀏覽器/作業系統的地區設定決定的，網頁的 lang 屬性管不到，
+                                 沒辦法用 CSS/HTML 強制。改成純文字輸入＋自動格式化（maskTimeInput()：輸入數字自動
+                                 補冒號），畫面顯示的文字完全由我們自己控制，不管使用者裝置的地區設定是什麼，
+                                 永遠是 24 小時制的「HH:MM」。 -->
                             <label class="flex items-center gap-1 text-[11px] text-slate-500 font-bold">
                                 🚩 出發
-                                <input type="time" value="${escapeHtml(currentStart)}" ${earliestStart ? `min="${escapeHtml(earliestStart)}"` : ''} onchange="setDayStartTime(${d}, this.value)" class="border ${startTooEarly ? 'border-amber-400' : 'border-[#d8cba8]'} rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
+                                <input type="text" inputmode="numeric" maxlength="5" placeholder="09:00" value="${escapeHtml(currentStart)}" oninput="maskTimeInput(this)" onchange="setDayStartTime(${d}, this.value)" class="w-14 border ${startTooEarly ? 'border-amber-400' : 'border-[#d8cba8]'} rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
                             </label>
                             <!-- 🔒 使用者要求可以自訂每天願意玩到幾點，比照「出發」時間同樣的欄位樣式與互動方式，
                                  用來算「排入天數」下拉選單裡顯示的剩餘空檔，不需要另外開一個設定區塊 -->
                             <label class="flex items-center gap-1 text-[11px] text-slate-500 font-bold">
                                 🏁 結束
-                                <input type="time" value="${escapeHtml(getDayEndTime(d))}" onchange="setDayEndTime(${d}, this.value)" class="border border-[#d8cba8] rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
+                                <input type="text" inputmode="numeric" maxlength="5" placeholder="22:00" value="${escapeHtml(getDayEndTime(d))}" oninput="maskTimeInput(this)" onchange="setDayEndTime(${d}, this.value)" class="w-14 border border-[#d8cba8] rounded-lg px-1.5 py-0.5 bg-[#faf6ee] text-xs">
                             </label>
                             <div class="flex items-center gap-2 flex-wrap">
                                 ${weatherBadge}
