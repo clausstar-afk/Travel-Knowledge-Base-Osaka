@@ -732,6 +732,7 @@
         let itemNotes = {};            // { itemId: '筆記文字' } 使用者針對個別景點卡片寫的自訂筆記，沒寫過的景點不會出現在這裡
         const expandedNoteEditIds = new Set(); // 目前正在展開筆記編輯介面的景點 id（純畫面狀態，不儲存、不跨帳號保留）
         const expandedCardMenuIds = new Set(); // 目前展開「⋯」操作選單的景點 id（純畫面狀態，不儲存、不跨帳號保留）
+        const expandedDetailIds = new Set(); // 目前展開「詳情」區塊（門票／營業時間／連結／筆記）的景點 id（純畫面狀態，不儲存、不跨帳號保留）
         // 🔒 使用者要求：每天標題旁新增收合/展開按鈕，視覺跟航班表單的收合按鈕一致（.collapse-toggle-btn）。
         // 純畫面狀態，不存 LocalStorage，用 Set 記錄目前收合的天數（存天數編號，不是景點 id）
         const collapsedDayIndices = new Set();
@@ -1407,6 +1408,7 @@
             expandedStayEditIds.clear();
             expandedNoteEditIds.clear();
             expandedCardMenuIds.clear();
+            expandedDetailIds.clear();
             try {
                 let saved = localStorage.getItem(scopedKey('travel_kb_dayplan'));
                 if (saved === null && getStorageScope() === 'guest') {
@@ -3896,9 +3898,21 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
         }
 
         // 從「⋯」選單點「新增／編輯筆記」：收起選單，直接展開筆記編輯框
+        // 🔒 筆記現在收在「展開詳情」區塊裡面，要一併展開詳情，不然編輯框會被收合藏起來看不到
         function openNoteEditFromMenu(itemId) {
             expandedCardMenuIds.delete(itemId);
             expandedNoteEditIds.add(itemId);
+            expandedDetailIds.add(itemId);
+            generateDynamicTimeline();
+        }
+
+        // 展開／收合景點卡片的「詳情」區塊（門票／營業時間／地圖官網連結／筆記）
+        // 🔒 使用者參考 Funliday 介面提出卡片太「胖」——名稱／時段／停留時間／排序按鈕／警示是每次都要看的
+        // 資訊，維持常駐顯示；門票等純參考資訊＋筆記收進這裡，預設收合，點了才展開，不跳 modal（跳 modal
+        // 會讓排序按鈕變得要開關視窗才點得到，警示也會被藏起來不容易注意到，都不適合這個情境）
+        function toggleCardDetail(itemId) {
+            if (expandedDetailIds.has(itemId)) expandedDetailIds.delete(itemId);
+            else expandedDetailIds.add(itemId);
             generateDynamicTimeline();
         }
 
@@ -4089,18 +4103,26 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             // 分隔符號正後面，讓「・」或「｜」孤零零留在行尾、下一行才接著顯示對應的內容，看起來像跑版。
             // 改成每個資訊項目（含它前面的分隔符號）包成一個 whitespace-nowrap 的區塊，斷行只會發生在
             // 「整個項目」之間，不會再把分隔符號跟它要接的內容拆開。
-            const metaAtoms = [];
-            if (timeBadge) metaAtoms.push({ html: timeBadge, sep: null });
-            [staySegment, lastEntryText, indoorRainNote].filter(Boolean).forEach((html, i) => {
-                const sep = metaAtoms.length === 0 ? null : (i === 0 ? '・' : '|');
-                metaAtoms.push({ html, sep });
-            });
-            const metaLine = metaAtoms.map(({ html, sep }) => {
-                const sepHtml = sep === '・' ? '<span class="text-[#d3c9ad] mx-1">・</span>'
-                    : sep === '|' ? '<span class="text-[#cbbfa0] mx-1 font-light">|</span>'
-                    : '';
-                return `<span class="inline-flex items-center whitespace-nowrap">${sepHtml}${html}</span>`;
-            }).join('');
+            // 🔒 抽成共用函式：卡片瘦身後拆成「常駐顯示」跟「展開詳情才顯示」兩條各自獨立的資訊行，
+            // 但組字規則（第一項無分隔、第二項「・」、之後「|」）要跟原本完全一致，不重複寫兩份邏輯
+            const buildMetaLine = (parts) => {
+                const atoms = [];
+                parts.filter(Boolean).forEach(html => {
+                    const sep = atoms.length === 0 ? null : (atoms.length === 1 ? '・' : '|');
+                    atoms.push({ html, sep });
+                });
+                return atoms.map(({ html, sep }) => {
+                    const sepHtml = sep === '・' ? '<span class="text-[#d3c9ad] mx-1">・</span>'
+                        : sep === '|' ? '<span class="text-[#cbbfa0] mx-1 font-light">|</span>'
+                        : '';
+                    return `<span class="inline-flex items-center whitespace-nowrap">${sepHtml}${html}</span>`;
+                }).join('');
+            };
+            // 🔒 使用者要求：收合狀態只留名稱／時段／停留時間／排序按鈕（＋警示），其餘（最終入場、
+            // 雨天備案這類補充資訊）改移進展開詳情區塊，不再常駐佔版面
+            const primaryMetaLine = buildMetaLine([timeBadge, staySegment]);
+            const secondaryMetaLine = buildMetaLine([lastEntryText, indoorRainNote]);
+            const isDetailExpanded = expandedDetailIds.has(item.id);
 
             // 📌 地圖／官網：改用可以跟卡片其他文字同色系的 SVG 線條圖示，不用會被瀏覽器強制上色的
             // 彩色 emoji（📍原本是鮮紅色，跟卡片低彩度的暖色調完全衝突）；按鈕尺寸統一跟刪除鈕一樣 32×32px
@@ -4133,27 +4155,35 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                     </div>
                     <!-- 📐 這一整塊統一用 flex-col gap-3，每個區塊間距都精準是 12px（實測驗證過），
                          不會像各自設 margin/padding 那樣疊加算錯、忽大忽小 -->
+                    <!-- 🔒 使用者參考 Funliday 介面提出卡片太「胖」，改成常駐/展開兩層：名稱／時段／
+                         停留時間／警示是每次瀏覽都要看的資訊，維持常駐顯示；門票／營業時間／地圖官網連結／
+                         筆記這些不是每次都需要看的參考資訊，收進「展開詳情」按鈕點開才顯示的區塊，同一張
+                         卡片內展開、不跳 modal（modal 會讓警示被藏起來、也不適合這裡） -->
                     <div class="flex flex-col gap-3 mt-3">
-                        <p class="text-xs text-slate-500 flex items-center flex-wrap">${metaLine}</p>
+                        <p class="text-xs text-slate-500 flex items-center flex-wrap">${primaryMetaLine}</p>
                         ${stayOverrideNote}
-                        ${noteBlock}
-                        <!-- 🔒 使用者要求：注意事項橫幅跟門票/營業時間橫幅上下交換，避免注意事項打斷資訊
-                             呈現節奏（先看到事實資訊，警示放後面）；兩個橫幅內部各自的排版都不更動，只調換順序 -->
-                        <div class="flex items-center gap-3 pt-3 border-t border-[#f5ecd9]">
-                            <!-- 🔒 這裡的排版邏輯：門票／營業時間已經改成固定拆成兩行的小區塊（不是原本會
-                                 不定形換行的單行膠囊徽章），高度已經可預期穩定，不會再有「不定形換行讓按鈕
-                                 浮在文字中間」的舊問題。使用者要求地圖/官網按鈕改回垂直置中、隨區塊高度彈性
-                                 調整（而不是貼齊頂部），改回 items-center，讓按鈕永遠對齊在文字區塊的垂直中心 -->
-                            <div class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-[#f5ecd9] text-[#6b5535] text-xs font-bold space-y-0.5">
-                                <div><span class="font-normal text-[#8a7a5c]">門票</span> ${safeTicket}</div>
-                                <div><span class="font-normal text-[#8a7a5c]">營業時間</span> ${safeHours || '請見官網'}</div>
-                            </div>
-                            <div class="flex items-center gap-1.5 shrink-0">
-                                <a href="${getMapUrl(item)}" target="_blank" rel="noopener noreferrer" title="開啟地圖" class="${linkBtnClass}">${mapIconSvg}</a>
-                                <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟網站" class="${linkBtnClass}">${linkIconSvg}</a>
-                            </div>
-                        </div>
                         ${warningBlock}
+                        <button onclick="toggleCardDetail('${item.id}')" class="w-full text-center py-1.5 text-[11px] font-bold text-[#8a7a5c] bg-[#f5ecd9] hover:bg-[#e8dcc8] rounded-lg transition">${isDetailExpanded ? '▴ 收合' : '▾ 展開詳情'}</button>
+                        ${isDetailExpanded ? `
+                            <div class="flex flex-col gap-3">
+                                ${secondaryMetaLine ? `<p class="text-xs text-slate-500 flex items-center flex-wrap">${secondaryMetaLine}</p>` : ''}
+                                <!-- 🔒 這裡的排版邏輯：門票／營業時間已經改成固定拆成兩行的小區塊（不是原本會
+                                     不定形換行的單行膠囊徽章），高度已經可預期穩定，不會再有「不定形換行讓按鈕
+                                     浮在文字中間」的舊問題。使用者要求地圖/官網按鈕改回垂直置中、隨區塊高度彈性
+                                     調整（而不是貼齊頂部），改回 items-center，讓按鈕永遠對齊在文字區塊的垂直中心 -->
+                                <div class="flex items-center gap-3 pt-3 border-t border-[#f5ecd9]">
+                                    <div class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-[#f5ecd9] text-[#6b5535] text-xs font-bold space-y-0.5">
+                                        <div><span class="font-normal text-[#8a7a5c]">門票</span> ${safeTicket}</div>
+                                        <div><span class="font-normal text-[#8a7a5c]">營業時間</span> ${safeHours || '請見官網'}</div>
+                                    </div>
+                                    <div class="flex items-center gap-1.5 shrink-0">
+                                        <a href="${getMapUrl(item)}" target="_blank" rel="noopener noreferrer" title="開啟地圖" class="${linkBtnClass}">${mapIconSvg}</a>
+                                        <a href="${safeWebsite}" target="_blank" rel="noopener noreferrer" title="開啟網站" class="${linkBtnClass}">${linkIconSvg}</a>
+                                    </div>
+                                </div>
+                                ${noteBlock}
+                            </div>
+                        ` : ''}
                     </div>
                     <!-- 🖐️ 手機無法用原生拖曳排序（HTML5 drag-and-drop 觸控裝置大多不支援），
                          這排按鈕才是手機使用者實際會用到的排序方式，特意放大到接近 44px 的觸控友善尺寸。
@@ -4280,13 +4310,25 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             // 跳轉的意義）。凍結在 header／browse-section 兩層既有 sticky 元素下方，實際 top 位移量在
             // 渲染完成後由 updateDayNavStickyOffset() 動態量測設定（見該函式註解），這裡先不寫死 top 值
             if (dayCount > 1) {
+                // 🔒 使用者實測回報：電腦版這排橫向捲動沒有拖曳/箭頭可以操作，天數一多後面的 Day
+                // 按鈕就點不到。改成沿用「所有景點」地區橫排同一套 .rail-track ＋ scrollRail() 機制
+                // （箭頭按鈕抓自己 parentElement 底下的 .rail-track 來捲動，直接重用同一支函式，
+                // 不用另外寫一份捲動邏輯），手機維持原生觸控滑動、箭頭用 sm: 隱藏不佔版面
                 timelineHTML += `
-                    <div id="day-quick-nav" class="sticky z-20 -mx-4 px-4 py-2 bg-[#faf6ee]/95 backdrop-blur-sm border-b border-[#e8dcc8] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                        ${Array.from({ length: dayCount }, (_, i) => i + 1).map(d => {
-                            const navDate = getDateForDayIndex(d);
-                            const navLabel = navDate ? `Day${d}・${formatDateLabel(navDate)}` : `Day${d}`;
-                            return `<button onclick="scrollToDayBlock(${d})" class="shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8] text-slate-600 whitespace-nowrap transition">${navLabel}</button>`;
-                        }).join('')}
+                    <div id="day-quick-nav" class="sticky z-20 -mx-4 px-4 py-2 bg-[#faf6ee]/95 backdrop-blur-sm border-b border-[#e8dcc8]">
+                        <div class="relative">
+                            <button onclick="scrollRail(this, -1)" title="往左看"
+                                class="hidden sm:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 w-7 h-7 rounded-full border border-[#d8cba8] bg-[#faf6ee] items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] shadow-md transition">‹</button>
+                            <div class="rail-track flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                                ${Array.from({ length: dayCount }, (_, i) => i + 1).map(d => {
+                                    const navDate = getDateForDayIndex(d);
+                                    const navLabel = navDate ? `Day${d}・${formatDateLabel(navDate)}` : `Day${d}`;
+                                    return `<button onclick="scrollToDayBlock(${d})" class="shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg bg-[#f5ecd9] hover:bg-[#e8dcc8] active:bg-[#d8cba8] text-slate-600 whitespace-nowrap transition">${navLabel}</button>`;
+                                }).join('')}
+                            </div>
+                            <button onclick="scrollRail(this, 1)" title="往右看"
+                                class="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-10 w-7 h-7 rounded-full border border-[#d8cba8] bg-[#faf6ee] items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] shadow-md transition">›</button>
+                        </div>
                     </div>
                 `;
             }
