@@ -1305,6 +1305,20 @@
         // 提早 resolve（字型還沒真的套用到畫面排版就先觸發），量到的寬度會不準。window 的 load 事件
         // 保證這時候整頁（含字型、圖片）都已經真正載入完成，再補跑一次當作保底，確保最終一定是準的
         window.addEventListener('load', () => setTimeout(alignBrandTitle, 50));
+        // 🔒 使用者仍然實測回報對不齊——猜測是特定行動裝置瀏覽器上，就算等過 fonts.ready／window.load，
+        // 字型換上去造成的排版變動時機還是抓不準。改用 ResizeObserver 直接監看副標題「實際渲染出來的寬度」
+        // 本身，只要這個寬度有任何變化（不管是字型換上、文字被改、視窗縮放），就自動重新對齊一次——
+        // 不用再猜哪個事件時機才是「真的載入完成」，副標題寬度穩定不再變動時，代表這次量到的一定是準的。
+        if (window.ResizeObserver) {
+            const subtitleForObserver = document.getElementById('brand-subtitle');
+            if (subtitleForObserver) {
+                let alignObserverTimer = null;
+                new ResizeObserver(() => {
+                    clearTimeout(alignObserverTimer);
+                    alignObserverTimer = setTimeout(alignBrandTitle, 30);
+                }).observe(subtitleForObserver);
+            }
+        }
 
         // 🔒 依登入帳號分開儲存行程資料：用 Google 帳號的 sub（這個帳號唯一、穩定的 ID，不會因為
         // 改名字或換大頭貼而變動）當作儲存範圍，未登入時歸類到 'guest'。這樣不同 Google 帳號在
@@ -1790,10 +1804,14 @@
             return scored.map(s => s.day);
         }
 
-        // 🪄 依「離下一站最近的排前面，距離差不多近時改用營業時間較緊的排前面」重新排序這一天的順序，
-        // 只在使用者主動點擊時套用，不會自動悄悄改動使用者手動排的順序。第一個景點維持原本的起點不動，
-        // 只重排它後面的順序，尊重使用者原本選定的當天起點。
-        const REORDER_CLOSE_ENOUGH_MIN = 5; // 距離差在這個範圍內，視為「差不多近」，改用營業時間 tie-break
+        // 🪄 使用者確認：規則改成「營業時間優先、距離退居第二」——原本「距離優先＋保留第一站不動」的版本
+        // 有兩個排不掉超時的情況：① 超時景點剛好離起點最近，重排後還是排在原位；② 天數只有 2-3 個景點時，
+        // 保留第一站不動等於只剩一個候補位置能動，規則怎麼換都換不出新排法（使用者實測回報「按下去沒反應」
+        // 就是踩到這個情況）。改成不特別保留第一站，整天所有景點一起依打烊時間由緊到鬆重新排序，沒有營業
+        // 時間資訊（例如公園）視為不趕時間排最後；打烊時間相同或都沒有資訊時，用 Array.sort 的穩定排序
+        // 特性維持原本的相對順序，不會無意義打亂彼此。只在使用者主動點擊時套用，不會自動悄悄改動。
+        // 🛡️ 這個功能沒辦法解決的情況：如果超時是因為「出發時間」本身比景點開門時間還早（不是順序問題），
+        // 不管怎麼重排都沒用，需要另外調整出發時間才能解決。
         function autoReorderDay(d) {
             const byId = {};
             attractionsData.forEach(a => { byId[a.id] = a; });
@@ -1805,27 +1823,10 @@
                 return hoursRange ? hoursRange.closeMin : Infinity; // 沒有營業時間資訊（例如公園）視為不趕時間
             }
 
-            const ordered = [items[0]]; // 保留原本的第一站當起點，只重排它後面的順序
-            const remaining = items.slice(1);
-            while (remaining.length > 0) {
-                const last = ordered[ordered.length - 1];
-                let bestIdx = 0;
-                let bestDist = estimateTransitMinutes(last.area, remaining[0].area);
-                for (let i = 1; i < remaining.length; i++) {
-                    const dist = estimateTransitMinutes(last.area, remaining[i].area);
-                    if (dist < bestDist - REORDER_CLOSE_ENOUGH_MIN) {
-                        bestIdx = i; bestDist = dist;
-                    } else if (Math.abs(dist - bestDist) <= REORDER_CLOSE_ENOUGH_MIN
-                        && closingMinutes(remaining[i]) < closingMinutes(remaining[bestIdx])) {
-                        bestIdx = i; bestDist = Math.min(dist, bestDist);
-                    }
-                }
-                ordered.push(remaining[bestIdx]);
-                remaining.splice(bestIdx, 1);
-            }
-            dayPlan[d - 1] = ordered.map(item => item.id);
+            const sorted = [...items].sort((a, b) => closingMinutes(a) - closingMinutes(b));
+            dayPlan[d - 1] = sorted.map(item => item.id);
             saveDayPlan();
-            showToast('已依距離跟營業時間重新排序這一天的順序！', true, '🪄');
+            showToast('已依營業時間優先重新排序這一天的順序！', true, '🪄');
             generateDynamicTimeline();
         }
 
@@ -4186,8 +4187,8 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                              跟天氣/日落徽章擠在同一個自動換行的橫排裡，長度一撐大就會把天氣/日落擠到下一行 -->
                         ${dayItems.length > 0 ? `<p class="text-xs text-slate-400 mb-3">共 ${dayItems.length} 個景點</p>` : ''}
                         ${startTimeWarning ? `<div class="flex flex-wrap items-center gap-2 mb-3">${startTimeWarning}</div>` : ''}
-                        <!-- 🪄 只在這天有景點被標示「可能超出營業時間」時才出現，按下去用「離下一站最近優先、
-                             距離差不多近時改用營業時間較緊優先」的規則重排順序，平常完全不佔版面 -->
+                        <!-- 🪄 只在這天有景點被標示「可能超出營業時間」時才出現，按下去用「營業時間優先、
+                             距離退居第二」的規則重排順序（見 autoReorderDay()），平常完全不佔版面 -->
                         ${hasOutOfHoursWarning ? `
                             <div class="mb-3">
                                 <button onclick="autoReorderDay(${d})" class="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#a8362b] bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg px-2.5 py-1.5 transition">
