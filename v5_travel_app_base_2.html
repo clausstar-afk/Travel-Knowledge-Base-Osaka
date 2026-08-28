@@ -839,7 +839,7 @@
         // 順便把航班號碼輸入框的提示文字換成「去程航班號碼」/「回程航班號碼」，讓使用者一眼就知道
         // 現在填的是哪一段航班，不用再回頭看上面選了哪顆單選鈕
         // 🔒 使用者要求去程/回程搜尋框:日期框寬度比例統一都用 8:2（原本回程另外用 7:3，跟去程不一致）
-        function applyFlightFieldWidthRatio(flightType) {
+        function applyFlightFieldWidthRatio() {
             const numberWrap = document.getElementById('flight-number-wrap');
             const dateWrap = document.getElementById('flight-date-wrap');
             numberWrap.classList.add('sm:flex-[8]');
@@ -851,7 +851,7 @@
             const flightType = document.querySelector('input[name="flight-type"]:checked').value;
             document.getElementById('flight-number-input').placeholder =
                 flightType === 'departure' ? '回程航班號碼，例如 CI173' : '去程航班號碼，例如 CI173';
-            applyFlightFieldWidthRatio(flightType);
+            applyFlightFieldWidthRatio();
             dateInput.removeAttribute('min');
             dateInput.removeAttribute('max');
             if (flightType === 'departure' && currentArrivalQueryDate) {
