@@ -733,6 +733,8 @@
         const expandedNoteEditIds = new Set(); // 目前正在展開筆記編輯介面的景點 id（純畫面狀態，不儲存、不跨帳號保留）
         const expandedCardMenuIds = new Set(); // 目前展開「⋯」操作選單的景點 id（純畫面狀態，不儲存、不跨帳號保留）
         const expandedDetailIds = new Set(); // 目前展開「詳情」區塊（門票／營業時間／連結／筆記）的景點 id（純畫面狀態，不儲存、不跨帳號保留）
+        const expandedInsertPickerIds = new Set(); // 目前展開「在下方加入景點」搜尋框的景點 id（純畫面狀態，不儲存、不跨帳號保留）
+        const insertPickerQueries = {}; // { itemId: '目前這個插入搜尋框打完送出的關鍵字' }（純畫面狀態，不儲存、不跨帳號保留）
         // 🔒 使用者要求：每天標題旁新增收合/展開按鈕，視覺跟航班表單的收合按鈕一致（.collapse-toggle-btn）。
         // 純畫面狀態，不存 LocalStorage，用 Set 記錄目前收合的天數（存天數編號，不是景點 id）
         const collapsedDayIndices = new Set();
@@ -1409,6 +1411,8 @@
             expandedNoteEditIds.clear();
             expandedCardMenuIds.clear();
             expandedDetailIds.clear();
+            expandedInsertPickerIds.clear();
+            Object.keys(insertPickerQueries).forEach(k => delete insertPickerQueries[k]);
             try {
                 let saved = localStorage.getItem(scopedKey('travel_kb_dayplan'));
                 if (saved === null && getStorageScope() === 'guest') {
@@ -3906,13 +3910,56 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             generateDynamicTimeline();
         }
 
+        // 從「⋯」選單點「在下方加入景點」：收起選單，展開詳情，顯示搜尋框（同樣收在詳情區塊裡）
+        function openInsertPickerFromMenu(itemId) {
+            expandedCardMenuIds.delete(itemId);
+            expandedInsertPickerIds.add(itemId);
+            expandedDetailIds.add(itemId);
+            generateDynamicTimeline();
+        }
+
+        // 執行「在下方加入景點」的搜尋：打完關鍵字要按 Enter／按鈕才觸發，不是打字即時篩選——
+        // 這個搜尋框本身包在整包重繪的行程時間軸裡（跟主搜尋框那個放在靜態區塊、重繪範圍不含
+        // 輸入框本身的情況不同），若做成 oninput 即時篩選，每次重繪都會讓輸入框失焦，體驗會很糟
+        function runInsertPickerSearch(itemId) {
+            const input = document.getElementById(`insert-search-${itemId}`);
+            insertPickerQueries[itemId] = input ? input.value.trim() : '';
+            generateDynamicTimeline();
+        }
+
+        // 把新景點插入到 afterItemId 這張卡片下方、同一天：
+        // 還沒加入行程的話先加進 myItineraryIds，再確保不會同時殘留在其他天/未分配清單（理論上不會，防禦性處理）
+        function insertAttractionAfter(afterItemId, newAttractionId, dayIndex) {
+            const wasNew = !myItineraryIds.has(newAttractionId);
+            if (wasNew) {
+                myItineraryIds.add(newAttractionId);
+                saveItinerary();
+            }
+            removeFromAllDaySlots(newAttractionId);
+            const list = dayPlan[dayIndex - 1];
+            const afterIdx = list.indexOf(afterItemId);
+            list.splice(afterIdx === -1 ? list.length : afterIdx + 1, 0, newAttractionId);
+            expandedInsertPickerIds.delete(afterItemId);
+            delete insertPickerQueries[afterItemId];
+            saveDayPlan();
+            maybeNudgeHealthCheck();
+            generateDynamicTimeline();
+        }
+
         // 展開／收合景點卡片的「詳情」區塊（門票／營業時間／地圖官網連結／筆記）
         // 🔒 使用者參考 Funliday 介面提出卡片太「胖」——名稱／時段／停留時間／排序按鈕／警示是每次都要看的
         // 資訊，維持常駐顯示；門票等純參考資訊＋筆記收進這裡，預設收合，點了才展開，不跳 modal（跳 modal
         // 會讓排序按鈕變得要開關視窗才點得到，警示也會被藏起來不容易注意到，都不適合這個情境）
         function toggleCardDetail(itemId) {
-            if (expandedDetailIds.has(itemId)) expandedDetailIds.delete(itemId);
-            else expandedDetailIds.add(itemId);
+            if (expandedDetailIds.has(itemId)) {
+                expandedDetailIds.delete(itemId);
+                // 收合詳情時，裡面的「加入景點」搜尋框狀態一併清掉，不要讓使用者下次展開時
+                // 意外看到上次還沒清空的搜尋結果
+                expandedInsertPickerIds.delete(itemId);
+                delete insertPickerQueries[itemId];
+            } else {
+                expandedDetailIds.add(itemId);
+            }
             generateDynamicTimeline();
         }
 
@@ -3982,6 +4029,42 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                     </select>
                     <span class="w-px h-4 bg-[#d8cba8]"></span>
                     <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="text-[11px] px-1 py-0.5 rounded text-[#c46b5c] hover:bg-[#f6e9e6] hover:text-[#b04938] transition whitespace-nowrap">🗑</button>
+                </div>
+            `;
+        }
+
+        // 🔍 「在下方加入景點」搜尋框＋結果清單：只列出目前還沒被排進任何一天的景點（新景點或還在
+        // 「未分配」清單裡的都算，已經排定某一天的不會出現在候選裡，避免又碰到複製功能那種一個景點
+        // id 對應多筆行程項目的架構問題）。沒打關鍵字或還沒按搜尋時只顯示輸入框，不會一展開詳情
+        // 就把所有候選景點都列出來洗版
+        function renderInsertPickerHTML(afterItem, dayIndex) {
+            const query = (insertPickerQueries[afterItem.id] || '').trim();
+            const placedIds = new Set(dayPlan.flat());
+            const safeQuery = escapeHtml(query);
+            let resultsHTML = '';
+            if (query) {
+                const matches = attractionsData.filter(a => !placedIds.has(a.id) && a.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
+                resultsHTML = matches.length > 0
+                    ? `<div class="flex flex-col gap-1.5 mt-2">
+                            ${matches.map(a => `
+                                <div class="flex items-center justify-between gap-2 bg-[#faf6ee] border border-[#e8dcc8] rounded-lg px-2.5 py-1.5">
+                                    <span class="text-xs min-w-0 truncate"><span class="font-bold text-slate-700">${escapeHtml(a.name)}</span><span class="text-[#a89b7c]">・${escapeHtml(getMainAreaKey(a.area))}</span></span>
+                                    <button onclick="insertAttractionAfter('${afterItem.id}', '${escapeJsAttr(a.id)}', ${dayIndex})" class="shrink-0 px-2.5 py-1 text-[11px] font-bold text-white bg-[#6b8f71] hover:bg-[#5a7a60] rounded-lg transition">加入</button>
+                                </div>
+                            `).join('')}
+                       </div>`
+                    : `<p class="text-[11px] text-[#a89b7c] text-center py-2">找不到符合「${safeQuery}」、而且還沒排進行程的景點</p>`;
+            }
+            return `
+                <div class="bg-[#f2eef4] border border-[#e3dae8] rounded-lg p-2.5">
+                    <div class="text-[10px] font-bold text-[#9678a5] mb-1.5">➕ 在「${escapeHtml(afterItem.name)}」下方加入景點（搜尋還沒排進任何一天的景點）</div>
+                    <div class="flex items-center gap-1.5">
+                        <input type="text" id="insert-search-${afterItem.id}" value="${safeQuery}" placeholder="輸入關鍵字，例如：拉麵" enterkeyhint="search"
+                            onkeydown="if(event.key==='Enter'){runInsertPickerSearch('${afterItem.id}');}"
+                            class="flex-1 min-w-0 text-xs bg-[#faf6ee] border border-[#d8cba8] rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#9678a5]">
+                        <button onclick="runInsertPickerSearch('${afterItem.id}')" class="shrink-0 px-3 py-1.5 text-[11px] font-bold text-white bg-[#9678a5] hover:bg-[#8a699a] rounded-lg transition">搜尋</button>
+                    </div>
+                    ${resultsHTML}
                 </div>
             `;
         }
@@ -4145,6 +4228,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                             <button onclick="toggleCardMenu('${item.id}')" title="更多操作" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] transition">⋯</button>
                             ${expandedCardMenuIds.has(item.id) ? `
                                 <div class="absolute top-9 right-0 z-20 w-48 bg-[#faf6ee] border border-[#d8cba8] rounded-xl shadow-lg overflow-hidden">
+                                    <button onclick="openInsertPickerFromMenu('${item.id}')" class="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-[#f5ecd9] transition border-b border-[#f0e8d5]">➕ 在下方加入景點</button>
                                     <button onclick="openNoteEditFromMenu('${item.id}')" class="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-[#f5ecd9] transition border-b border-[#f0e8d5]">📝 新增／編輯筆記</button>
                                     <button onclick="handleDeleteItemClick(this, '${item.id}', '${jsAttrName}')" title="從行程中刪除" class="w-full text-left px-3 py-2.5 text-xs font-bold text-[#b04938] hover:bg-[#f6e9e6] transition">🗑 從行程中刪除</button>
                                 </div>
@@ -4164,6 +4248,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                         <button onclick="toggleCardDetail('${item.id}')" class="w-full text-center py-1.5 text-[11px] font-bold text-[#8a7a5c] bg-[#f5ecd9] hover:bg-[#e8dcc8] rounded-lg transition">${isDetailExpanded ? '▴ 收合' : '▾ 展開詳情'}</button>
                         ${isDetailExpanded ? `
                             <div class="flex flex-col gap-3">
+                                ${expandedInsertPickerIds.has(item.id) ? renderInsertPickerHTML(item, dayIndex) : ''}
                                 ${secondaryMetaLine ? `<p class="text-xs text-slate-500 flex items-center flex-wrap">${secondaryMetaLine}</p>` : ''}
                                 <!-- 🔒 這裡的排版邏輯：門票／營業時間已經改成固定拆成兩行的小區塊（不是原本會
                                      不定形換行的單行膠囊徽章），高度已經可預期穩定，不會再有「不定形換行讓按鈕
