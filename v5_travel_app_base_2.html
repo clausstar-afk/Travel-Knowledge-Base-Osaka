@@ -321,7 +321,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                             </svg>
                         </button>
-                        <input type="text" id="search-input" enterkeyhint="search" oninput="onSearchInput()" onkeydown="if(event.key==='Enter' && !event.isComposing) handleSearch()" placeholder="搜尋景點關鍵字"
+                        <input type="text" id="search-input" enterkeyhint="search" oninput="onSearchInput()" onkeydown="if(event.key==='Enter' && !event.isComposing) handleSearch()" placeholder="搜尋景點"
                         class="w-full pl-12 pr-28 py-2.5 text-sm bg-[#faf6ee] border border-[#d8cba8] rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#2c5f7c] focus:border-transparent transition shadow-sm">
                         <!-- 🍄 Kinopio：這個 App 的 AI 助理角色，帶路的嚮導人設。按鈕維持圖示為主（空間有限），
                              完整名字放在 title 提示跟下方說明文字裡 -->
@@ -3454,21 +3454,36 @@ ${list}
         }
 
         // 登出：清除本機保存的登入資訊，並還原成 Google 登入按鈕
+        // 🔒 使用者實測回報：登出後畫面沒有自動更新，卡在登出前的資料，要手動重新整理才會恢復——
+        // 抓到根因是 Google Identity Services 的 disableAutoSelect()／renderButton() 在某些瀏覽器
+        // 環境（例如第三方 Cookie 被瀏覽器/擴充功能封鎖）會丟出例外，讓整個函式在還沒執行到
+        // reloadScopedDataAndRerender() 之前就整個中斷，後面的畫面重繪跟 toast 通通沒機會跑到。
+        // 改成把「重新載入資料＋重繪畫面」這段移到最前面先執行，並把 Google 按鈕相關操作各自包上
+        // try/catch——就算 Google 那段真的出錯，使用者看到的行程資料還是會正確、立刻退回訪客身分，
+        // 不會卡住等使用者自己重新整理頁面。
         function signOutUser() {
             try {
                 localStorage.removeItem('travel_kb_user');
             } catch (e) {
                 console.error("LocalStorage remove error (user profile):", e);
             }
-            if (window.google?.accounts?.id) {
-                google.accounts.id.disableAutoSelect();
+            reloadScopedDataAndRerender(); // 🔁 退回訪客範圍的行程資料，優先執行，不被下面 Google 按鈕的例外卡住
+            try {
+                if (window.google?.accounts?.id) {
+                    google.accounts.id.disableAutoSelect();
+                }
+            } catch (e) {
+                console.error("Google Identity Services disableAutoSelect error:", e);
             }
             const profileDiv = document.getElementById('user-profile');
             profileDiv.innerHTML = `<div class="g_id_signin" data-type="standard" data-size="small" data-theme="outline" data-text="signin" data-shape="pill"></div>`;
-            if (window.google?.accounts?.id) {
-                google.accounts.id.renderButton(profileDiv.querySelector('.g_id_signin'), { type: 'standard', size: 'small', theme: 'outline', text: 'signin', shape: 'pill' });
+            try {
+                if (window.google?.accounts?.id) {
+                    google.accounts.id.renderButton(profileDiv.querySelector('.g_id_signin'), { type: 'standard', size: 'small', theme: 'outline', text: 'signin', shape: 'pill' });
+                }
+            } catch (e) {
+                console.error("Google Identity Services renderButton error:", e);
             }
-            reloadScopedDataAndRerender(); // 🔁 退回訪客範圍的行程資料
             showToast('已登出', false);
         }
 
