@@ -3920,6 +3920,19 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             generateDynamicTimeline();
         }
 
+        // 🔒 使用者要求：「⋯」選單比照一般下拉選單慣例，點旁邊空白處也要能自動關閉，不是只能再點一次
+        // 「⋯」按鈕才能收合。掛一個全域的 document 點擊監聽器，在整支腳本載入時只掛一次（不會隨著
+        // generateDynamicTimeline() 每次重繪畫面而重複疊加），只要點擊發生在所有選單的按鈕/選單本身
+        // （.card-menu-wrap）以外，就把目前展開的選單收掉。這裡刻意不動「展開詳情」「筆記編輯」「調整
+        // 停留時間」這幾個手動收合的區塊——那些比較像手風琴內容區塊，使用者通常會期待維持展開直到自己
+        // 按收合，跟下拉選單「點旁邊就該自動消失」的慣例不一樣，不適合套用同一套邏輯
+        document.addEventListener('click', (e) => {
+            if (expandedCardMenuIds.size > 0 && !e.target.closest('.card-menu-wrap')) {
+                expandedCardMenuIds.clear();
+                generateDynamicTimeline();
+            }
+        });
+
         // 從「⋯」選單點「新增／編輯筆記」：收起選單，直接展開筆記編輯框
         // 🔒 筆記現在收在「展開詳情」區塊裡面，要一併展開詳情，不然編輯框會被收合藏起來看不到
         function openNoteEditFromMenu(itemId) {
@@ -4255,7 +4268,7 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                                 <span>${categoryIcon}</span>${safeName}
                             </h4>
                         </div>
-                        <div class="relative shrink-0">
+                        <div class="relative shrink-0 card-menu-wrap">
                             <button onclick="toggleCardMenu('${item.id}')" title="更多操作" class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-[#f5ecd9] hover:text-[#2c5f7c] transition">⋯</button>
                             ${expandedCardMenuIds.has(item.id) ? `
                                 <div class="absolute top-9 right-0 z-20 w-48 bg-[#faf6ee] border border-[#d8cba8] rounded-xl shadow-lg overflow-hidden">
