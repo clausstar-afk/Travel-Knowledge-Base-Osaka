@@ -3835,6 +3835,13 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
 
         // 🗑 完全從行程移除（跟「移出這一天」是不同操作：移出只是退回未分配，這個是真的刪掉）
         // 為了避免跟「移出」誤觸搞混，設計成兩段式點擊：第一次點只會變成「確定？」，2.5 秒內沒點第二次會自動恢復
+        // 🔒 使用者實測回報：倒數結束後按鈕變成空白（背景還留著確認狀態的粉紅色）。根因是這個函式原本
+        // 是設計給已經不存在的舊版正方形圖示鈕用的（整串 class 換成固定尺寸的置中膠囊按鈕、還原時文字寫死
+        // 成單一「🗑」圖示）——現在這個函式服務的兩個呼叫來源版型完全不同（未分配區小標籤／「⋯」選單裡
+        // 帶文字說明的整排選項「🗑 從行程中刪除」），寫死的還原文字/版型跟這兩種實際版型都對不上。
+        // 改成完全不動 class／版型（用 inline style 疊加顏色，inline style 優先權固定最高，不用擔心
+        // Tailwind CDN 動態插入樣式規則的先後順序），文字改成用 dataset 記住「這顆按鈕自己原本的文字」
+        // 精準還原，不管之後這個函式被用在哪種版型的按鈕上都不會再對不上
         let deleteConfirmTimeout = null;
         function handleDeleteItemClick(btn, itemId, itemName) {
             if (btn.dataset.confirming === '1') {
@@ -3842,19 +3849,17 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                 toggleItinerary(itemId, itemName); // 完全從 myItineraryIds 移除，會自動觸發重新渲染
                 return;
             }
-            // 記住原本的 class（兩個呼叫來源的按鈕大小/樣式不一樣：小卡片是固定 32×32px 正方形圖示鈕，
-            // 未分配區的小標籤是自動寬度），確認倒數結束後才能精準復原，而不是用 classList add/remove 硬猜
-            if (!btn.dataset.originalClass) btn.dataset.originalClass = btn.className;
+            if (!btn.dataset.originalText) btn.dataset.originalText = btn.textContent;
             btn.dataset.confirming = '1';
             btn.textContent = '確定？';
-            // 確認狀態一律換成「自動寬度的膠囊按鈕」，不再塞進原本給單一圖示用的固定正方形裡——
-            // 「確定？」三個字塞在 32×32px 的方框會被擠成兩行，看起來很隨便，這裡直接給它需要的寬度
-            btn.className = 'shrink-0 h-8 px-3 rounded-lg flex items-center justify-center text-xs font-bold text-white bg-[#a8362b] hover:bg-[#a8362b]/90 whitespace-nowrap transition';
+            btn.style.color = '#fff';
+            btn.style.backgroundColor = '#a8362b';
             clearTimeout(deleteConfirmTimeout);
             deleteConfirmTimeout = setTimeout(() => {
                 btn.dataset.confirming = '0';
-                btn.textContent = '🗑';
-                btn.className = btn.dataset.originalClass;
+                btn.textContent = btn.dataset.originalText;
+                btn.style.color = '';
+                btn.style.backgroundColor = '';
             }, 2500);
         }
 
@@ -3929,6 +3934,14 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
             expandedCardMenuIds.delete(itemId);
             expandedInsertPickerIds.add(itemId);
             expandedDetailIds.add(itemId);
+            generateDynamicTimeline();
+        }
+
+        // 取消「在下方加入景點」搜尋框：只收掉搜尋框本身，不影響同一個展開詳情區塊裡的其他內容
+        // （門票/連結/筆記），跟 toggleCardDetail() 整塊收合的收合鍵是不同層級的操作
+        function closeInsertPicker(itemId) {
+            expandedInsertPickerIds.delete(itemId);
+            delete insertPickerQueries[itemId];
             generateDynamicTimeline();
         }
 
@@ -4079,6 +4092,10 @@ ${weatherContext ? `\n已查到的天氣預報：\n${weatherContext}` : ''}
                         <button onclick="runInsertPickerSearch('${afterItem.id}')" class="shrink-0 px-3 py-1.5 text-[11px] font-bold text-white bg-[#9678a5] hover:bg-[#8a699a] rounded-lg transition">搜尋</button>
                     </div>
                     ${resultsHTML}
+                    <!-- 🔒 使用者要求比照筆記編輯框補上「取消」——原本只有展開詳情的收合鍵能關掉這個搜尋框，
+                         但那樣連門票/連結/筆記整塊詳情都會一起收掉。獨立一行放，不塞進上面搜尋列（手機窄螢幕
+                         輸入框+搜尋鈕已經佔滿寬度，再加一顆按鈕會被擠爆），版面風險是 0 -->
+                    <button onclick="closeInsertPicker('${afterItem.id}')" class="mt-1.5 px-1 text-[11px] font-bold text-slate-500 hover:text-slate-700 transition">取消</button>
                 </div>
             `;
         }
