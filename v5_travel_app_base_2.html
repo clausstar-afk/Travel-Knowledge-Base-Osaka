@@ -1955,21 +1955,34 @@
         // 特性維持原本的相對順序，不會無意義打亂彼此。只在使用者主動點擊時套用，不會自動悄悄改動。
         // 🛡️ 這個功能沒辦法解決的情況：如果超時是因為「出發時間」本身比景點開門時間還早（不是順序問題），
         // 不管怎麼重排都沒用，需要另外調整出發時間才能解決。
+        // 🔒 使用者發現：原本排序只看「打烊時間由早到晚」，只解決得了「太晚到、超過打烊」，解決不了
+        // 「太早到、還沒開門」——outOfHours 的判斷其實兩種情況都算（見 computeDaySchedule），但排序邏輯
+        // 只顧到其中一種，跟 toast 文字宣稱的「依營業時間重新排序」也對不上（其實只看了打烊時間）。
+        // 改成依「營業時間窗口寬度」（打烊−開門）由窄到寬排序：時間彈性越小（越難排）的景點越早卡位，
+        // 彈性越大（含 24 小時營業／沒有營業時間資訊）的景點排後面調整空間比較大，同時改善太早/太晚到
+        // 兩種情況，不需要真的模擬整天排程去驗證每一種排法，維持跟原本一樣簡單的規則引擎複雜度
         function autoReorderDay(d) {
             const byId = {};
             attractionsData.forEach(a => { byId[a.id] = a; });
             const items = (dayPlan[d - 1] || []).map(id => byId[id]).filter(Boolean);
             if (items.length <= 1) return;
 
+            function windowWidthMin(item) {
+                const hoursRange = parseHoursRange(item.hours);
+                return hoursRange ? (hoursRange.closeMin - hoursRange.openMin) : Infinity; // 沒有營業時間資訊視為完全彈性，排最後
+            }
             function closingMinutes(item) {
                 const hoursRange = parseHoursRange(item.hours);
-                return hoursRange ? hoursRange.closeMin : Infinity; // 沒有營業時間資訊（例如公園）視為不趕時間
+                return hoursRange ? hoursRange.closeMin : Infinity;
             }
 
-            const sorted = [...items].sort((a, b) => closingMinutes(a) - closingMinutes(b));
+            const sorted = [...items].sort((a, b) => {
+                const diff = windowWidthMin(a) - windowWidthMin(b);
+                return diff !== 0 ? diff : closingMinutes(a) - closingMinutes(b); // 窗口寬度一樣時，打烊較早的優先
+            });
             dayPlan[d - 1] = sorted.map(item => item.id);
             saveDayPlan();
-            showToast('已依營業時間優先重新排序這一天的順序！', true, '🪄');
+            showToast('已依營業時間鬆緊重新排序這一天的順序！', true, '🪄');
             generateDynamicTimeline();
         }
 
